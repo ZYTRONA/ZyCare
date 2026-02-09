@@ -1,14 +1,28 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
 
-const API_URL = Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL || 
-               process.env.EXPO_PUBLIC_API_URL || 
-               'http://10.56.198.1:5000';
+// Try multiple connection options in order
+const getAPIURL = () => {
+  // Priority 1: Explicit environment variable
+  if (Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL) {
+    return Constants.expoConfig?.extra?.EXPO_PUBLIC_API_URL;
+  }
+  
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
+  
+  // Priority 2: Default to network IP
+  return 'http://10.56.198.1:5000';
+};
+
+const API_URL = getAPIURL();
 
 console.log('🔧 API Configuration:');
 console.log('  - API_URL:', API_URL);
-console.log('  - Constants:', Constants.expoConfig?.extra);
-console.log('  - process.env:', process.env.EXPO_PUBLIC_API_URL);
+console.log('  - Constants.expoConfig?.extra:', Constants.expoConfig?.extra);
+console.log('  - process.env.EXPO_PUBLIC_API_URL:', process.env.EXPO_PUBLIC_API_URL);
+console.log('  - 📝 To fix network errors, update .env file and restart Expo');
 
 const api = axios.create({
   baseURL: API_URL,
