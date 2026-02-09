@@ -8,23 +8,30 @@ import {
   ScrollView,
   FlatList,
   Animated,
+  Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
 
 import { Colors, Typography, Spacing, Shadows, COMMON_SYMPTOMS } from '../constants/theme';
 import { RootStackParamList, Symptom, AISymptomAnalysis, PossibleCondition } from '../types';
+import { symptomCheckerAPI } from '../services/api.js';
+import { useAuthStore } from '../store';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function SymptomCheckerScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const user = useAuthStore((state: any) => state.user);
   const [step, setStep] = useState<'input' | 'analyzing' | 'results'>('input');
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [additionalInfo, setAdditionalInfo] = useState('');
   const [duration, setDuration] = useState<string>('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<AISymptomAnalysis | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -36,10 +43,59 @@ export default function SymptomCheckerScreen() {
     );
   };
 
-  const startAnalysis = () => {
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please grant photo library permission to upload medical images.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const takePicture = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please grant camera permission to take photos of medical conditions.'
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  };
+
+  const removeImage = () => {
+    setSelectedImage(null);
+  };
+
+  const startAnalysis = async () => {
     setStep('analyzing');
 
-    // Simulate AI analysis with animated pulse
+    // Animate pulse
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, {
@@ -55,51 +111,79 @@ export default function SymptomCheckerScreen() {
       ])
     ).start();
 
-    // Simulate API call delay
-    setTimeout(() => {
+    try {
+      // Build symptom description for backend
+      const symptomNames = selectedSymptoms
+        .map((id) => COMMON_SYMPTOMS.find((s) => s.id === id)?.name)
+        .filter(Boolean) as string[];
+      
+      // Call backend API with image if provided
+      const response = await symptomCheckerAPI.analyzeWithImage({
+        symptoms: symptomNames,
+        duration: duration || '2-3 days',
+        additionalInfo,
+        imageUri: selectedImage,
+      });
+      
       pulseAnim.stopAnimation();
       
-      // Mock AI analysis result
-      const mockResult: AISymptomAnalysis = {
-        symptoms: selectedSymptoms.map((id) => {
-          const symptom = COMMON_SYMPTOMS.find((s) => s.id === id);
-          return {
-            id,
-            name: symptom?.name || '',
-            severity: 'moderate',
-            duration: duration || '2-3 days',
-          };
-        }),
-        possibleConditions: [
-          {
-            name: 'Common Cold',
-            probability: 75,
-            description: 'A viral infection that affects the upper respiratory tract.',
-          },
-          {
-            name: 'Seasonal Flu',
-            probability: 45,
-            description: 'An infection caused by influenza viruses, more severe than cold.',
-          },
-          {
-            name: 'Allergic Reaction',
-            probability: 30,
-            description: 'An immune response to allergens in the environment.',
-          },
-        ],
-        urgencyLevel: 'medium',
-        recommendations: [
-          'Rest and stay hydrated',
-          'Monitor your symptoms for 24-48 hours',
-          'Take over-the-counter medication for symptom relief',
-          'Consult a doctor if symptoms worsen or persist',
-        ],
-        suggestedSpecialties: ['General Physician', 'ENT Specialist'],
+      // Ensure urgencyLevel exists with default value
+      const normalizedResponse = {
+        ...response,
+        urgencyLevel: response.urgencyLevel || 'medium',
+        suggestedSpecialties: response.suggestedSpecialties || [],
+        possibleConditions: response.possibleConditions || [],
       };
-
-      setAnalysisResult(mockResult);
+      
+      setAnalysisResult(normalizedResponse as AISymptomAnalysis);
       setStep('results');
-    }, 3000);
+      
+      // Alert for high severity
+      const urgency = normalizedResponse.urgencyLevel;
+      if (urgency === 'high' || urgency === 'emergency') {
+        setTimeout(() => {
+          Alert.alert(
+            'High Priority',
+            'Your symptoms require medical attention. Would you like to connect with a doctor?',
+            [
+              { text: 'Not Now', style: 'cancel' },
+              { 
+                text: 'Find Doctors', 
+                onPress: () => navigation.navigate('Doctors' as any)
+              },
+            ]
+          );
+        }, 500);
+      }
+    } catch (error: any) {
+      pulseAnim.stopAnimation();
+      console.error('Symptom analysis error:', error);
+      
+      let errorMessage = 'Failed to analyze symptoms. Please try again.';
+      
+      // Provide more specific error messages
+      if (error.response) {
+        if (error.response.status === 500) {
+          errorMessage = 'Server error during analysis. The AI engine may be processing. Please try again in a moment.';
+        } else if (error.response.status === 400) {
+          errorMessage = 'Invalid request. Please check your symptoms and try again.';
+        } else if (error.response.data?.detail) {
+          errorMessage = `Analysis error: ${error.response.data.detail}`;
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      Alert.alert(
+        'Analysis Error', 
+        errorMessage,
+        [
+          { text: 'Try Again', onPress: () => setStep('input') },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+      setStep('input');
+    }
   };
 
   const resetChecker = () => {
@@ -107,6 +191,7 @@ export default function SymptomCheckerScreen() {
     setSelectedSymptoms([]);
     setAdditionalInfo('');
     setDuration('');
+    setSelectedImage(null);
     setAnalysisResult(null);
   };
 
@@ -223,7 +308,37 @@ export default function SymptomCheckerScreen() {
           onChangeText={setAdditionalInfo}
         />
       </View>
-
+      {/* Medical Image Upload */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>📸 Medical Image (Optional)</Text>
+        <Text style={styles.sectionSubtitle}>
+          Upload or take a photo of affected area for AI visual analysis
+        </Text>
+        
+        {selectedImage ? (
+          <View style={styles.imagePreviewContainer}>
+            <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+            <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+              <Ionicons name="close-circle" size={24} color={Colors.error} />
+            </TouchableOpacity>
+            <View style={styles.imageLabel}>
+              <Ionicons name="checkmark-circle" size={16} color={Colors.success} />
+              <Text style={styles.imageLabelText}>Image uploaded - AI will analyze</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.imageUploadButtons}>
+            <TouchableOpacity style={styles.imageButton} onPress={takePicture}>
+              <Ionicons name="camera" size={24} color={Colors.primary} />
+              <Text style={styles.imageButtonText}>Take Photo</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+              <Ionicons name="images" size={24} color={Colors.primary} />
+              <Text style={styles.imageButtonText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
       {/* Analyze Button */}
       <TouchableOpacity
         style={[
@@ -317,14 +432,34 @@ export default function SymptomCheckerScreen() {
             <Text
               style={[
                 styles.urgencyLevel,
-                { color: getUrgencyColor(analysisResult.urgencyLevel) },
+                { color: getUrgencyColor(analysisResult.urgencyLevel || 'medium') },
               ]}
             >
-              {analysisResult.urgencyLevel.charAt(0).toUpperCase() +
-                analysisResult.urgencyLevel.slice(1)}
+              {analysisResult.urgencyLevel 
+                ? analysisResult.urgencyLevel.charAt(0).toUpperCase() + analysisResult.urgencyLevel.slice(1)
+                : 'Medium'}
             </Text>
           </View>
         </View>
+
+        {/* Image Analysis Results */}
+        {analysisResult.imageFindings && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>📸 Visual Analysis</Text>
+            <View style={styles.imageFindingsCard}>
+              <View style={styles.imageFindingsHeader}>
+                <Ionicons name="eye" size={24} color={Colors.primary} />
+                <Text style={styles.imageFindingsTitle}>What AI Detected in Image:</Text>
+              </View>
+              <Text style={styles.imageFindingsText}>{analysisResult.imageFindings}</Text>
+              {selectedImage && (
+                <View style={styles.analyzedImagePreview}>
+                  <Image source={{ uri: selectedImage }} style={styles.analyzedImage} />
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Possible Conditions */}
         <View style={styles.section}>
@@ -370,7 +505,17 @@ export default function SymptomCheckerScreen() {
           <Text style={styles.sectionTitle}>Suggested Specialists</Text>
           <View style={styles.specialistsContainer}>
             {analysisResult.suggestedSpecialties.map((specialty, index) => (
-              <TouchableOpacity key={index} style={styles.specialistCard}>
+              <TouchableOpacity 
+                key={index} 
+                style={styles.specialistCard}
+                onPress={() => {
+                  // Navigate back to MainTabs and switch to Doctors tab with filter
+                  navigation.navigate('MainTabs', { 
+                    screen: 'Doctors', 
+                    params: { filterSpecialty: specialty } 
+                  });
+                }}
+              >
                 <Ionicons name="medical" size={24} color={Colors.primary} />
                 <Text style={styles.specialistText}>{specialty}</Text>
                 <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
@@ -765,5 +910,89 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSizes.lg,
     fontWeight: Typography.fontWeights.semibold,
     color: Colors.primary,
+  },
+  imageUploadButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  imageButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.cardBackground,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: Colors.primary,
+  },
+  imageButtonText: {
+    fontSize: Typography.fontSizes.sm,
+    fontWeight: Typography.fontWeights.medium,
+    color: Colors.primary,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: Colors.cardBackground,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: Spacing.sm,
+    right: Spacing.sm,
+    backgroundColor: Colors.textWhite,
+    borderRadius: 12,
+  },
+  imageLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    padding: Spacing.md,
+    backgroundColor: Colors.success + '20',
+  },
+  imageLabelText: {
+    fontSize: Typography.fontSizes.sm,
+    color: Colors.success,
+    fontWeight: Typography.fontWeights.medium,
+  },
+  imageFindingsCard: {
+    backgroundColor: Colors.cardBackground,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    ...Shadows.small,
+  },
+  imageFindingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  imageFindingsTitle: {
+    fontSize: Typography.fontSizes.md,
+    fontWeight: Typography.fontWeights.semibold,
+    color: Colors.textPrimary,
+  },
+  imageFindingsText: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.textPrimary,
+    lineHeight: 22,
+    marginBottom: Spacing.md,
+  },
+  analyzedImagePreview: {
+    marginTop: Spacing.md,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  analyzedImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 8,
   },
 });

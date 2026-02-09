@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,23 +17,107 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
+import { authAPI } from '../../services/api.js';
+import { useAuthStore } from '../../store';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function LoginScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const login = useAuthStore((state: any) => state.login);
+  
+  const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
+  const [role, setRole] = useState<'patient' | 'doctor'>('patient');
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [testMode, setTestMode] = useState(false);
 
-  const handleLogin = async () => {
+  const handleSendOTP = async () => {
+    if (!phone || !name) {
+      Alert.alert('Error', 'Please enter phone number and name');
+      return;
+    }
+
+    // TEST MODE: Skip API call and use hardcoded OTP
+    if (testMode) {
+      setOtpSent(true);
+      Alert.alert(
+        '🧪 TEST MODE - OTP',
+        'Use OTP: 1234\n\nTest mode bypasses backend for quick testing.',
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
+    
     setIsLoading(true);
-    // TODO: Implement actual authentication
-    setTimeout(() => {
+    try {
+      console.log('Sending OTP to:', phone, 'Name:', name, 'Role:', role);
+      const response = await authAPI.login(phone, name, role);
+      console.log('OTP Response:', response);
+      
+      if (response.success) {
+        setOtpSent(true);
+        Alert.alert(
+          'OTP Sent Successfully', 
+          `Your OTP: ${response.otp}\n\nPhone: ${phone}`,
+          [{ text: 'OK', style: 'default' }]
+        );
+      } else {
+        Alert.alert('Error', response.message || 'Failed to send OTP');
+      }
+    } catch (error: any) {
+      console.error('OTP Send Error:', error);
+      console.error('Error details:', error.response?.data);
+      
+      // Show test mode option
+      Alert.alert(
+        'Connection Failed', 
+        'Cannot reach backend server.\n\nWould you like to use TEST MODE?\n(Uses hardcoded OTP: 1234)',
+        [
+          {
+            text: 'Use Test Mode',
+            onPress: () => {
+              setTestMode(true);
+              setOtpSent(true);
+              Alert.alert('🧪 TEST MODE', 'Use OTP: 1234');
+            }
+          },
+          { text: 'Cancel', style: 'cancel' }
+        ]
+      );
+    } finally {
       setIsLoading(false);
-      navigation.navigate('MainTabs');
-    }, 1500);
+    }
+  };
+
+  const handleVerifyOTP = async () => {
+    if (!otp) {
+      Alert.alert('Error', 'Please enter OTP');
+      return;
+    }
+    
+    setIsLoading(true);
+    try {
+      console.log('Verifying OTP:', otp, 'for phone:', phone);
+      const response = await authAPI.verifyOTP(phone, otp);
+      console.log('Verify Response:', response);
+      
+      if (response.success && response.user) {
+        login(response.user);
+        Alert.alert('Success', 'Login successful!');
+        navigation.navigate('MainTabs');
+      } else {
+        Alert.alert('Error', response.message || 'Invalid OTP');
+      }
+    } catch (error: any) {
+      console.error('OTP Verify Error:', error);
+      console.error('Error details:', error.response?.data);
+      Alert.alert('Error', error.response?.data?.message || error.message || 'Invalid OTP');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -55,104 +139,180 @@ export default function LoginScreen() {
             <Text style={styles.subtitle}>
               Your AI-powered health companion
             </Text>
+            
+            {/* Test Mode Toggle */}
+            <TouchableOpacity 
+              style={[styles.testModeToggle, testMode && styles.testModeToggleActive]}
+              onPress={() => {
+                setTestMode(!testMode);
+                Alert.alert(
+                  testMode ? 'Test Mode Disabled' : '🧪 Test Mode Enabled',
+                  testMode 
+                    ? 'Switched back to normal mode' 
+                    : 'Use OTP: 1234 to login without backend'
+                );
+              }}
+            >
+              <Ionicons 
+                name={testMode ? "flask" : "flask-outline"} 
+                size={20} 
+                color={testMode ? "#856404" : Colors.textSecondary} 
+              />
+              <Text style={[styles.testModeToggleText, testMode && styles.testModeToggleTextActive]}>
+                {testMode ? '🧪 Test Mode ON' : 'Enable Test Mode'}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Login Form */}
           <View style={styles.form}>
-            <Text style={styles.formTitle}>Welcome Back</Text>
+            <Text style={styles.formTitle}>Welcome to ZYCARE</Text>
             <Text style={styles.formSubtitle}>
-              Sign in to continue your healthcare journey
+              {otpSent ? (testMode ? '🧪 TEST MODE - Use OTP: 1234' : 'Enter OTP sent to your phone') : 'Enter your details to continue'}
             </Text>
+            {testMode && (
+              <View style={styles.testModeBadge}>
+                <Text style={styles.testModeText}>🧪 Test Mode Active</Text>
+              </View>
+            )}
 
-            {/* Email Input */}
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color={Colors.textSecondary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Email Address"
-                placeholderTextColor={Colors.textLight}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-            </View>
+            {!otpSent ? (
+              <>
+                {/* Phone Input */}
+                <View style={styles.inputContainer}>
+                  <Ionicons
+                    name="call-outline"
+                    size={20}
+                    color={Colors.textSecondary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Phone Number (+1234567890)"
+                    placeholderTextColor={Colors.textLight}
+                    value={phone}
+                    onChangeText={setPhone}
+                    keyboardType="phone-pad"
+                  />
+                </View>
 
-            {/* Password Input */}
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color={Colors.textSecondary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor={Colors.textLight}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeIcon}
-              >
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color={Colors.textSecondary}
-                />
-              </TouchableOpacity>
-            </View>
+                {/* Name Input */}
+                <View style={styles.inputContainer}>
+                  <Ionicons
+                    name="person-outline"
+                    size={20}
+                    color={Colors.textSecondary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Full Name"
+                    placeholderTextColor={Colors.textLight}
+                    value={name}
+                    onChangeText={setName}
+                  />
+                </View>
 
-            {/* Forgot Password */}
-            <TouchableOpacity style={styles.forgotPassword}>
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-            </TouchableOpacity>
+                {/* Role Selection */}
+                <View style={styles.roleContainer}>
+                  <Text style={styles.roleLabel}>Login as:</Text>
+                  <View style={styles.roleButtons}>
+                    <TouchableOpacity
+                      style={[styles.roleButton, role === 'patient' && styles.roleButtonActive]}
+                      onPress={() => setRole('patient')}
+                    >
+                      <Ionicons 
+                        name="person" 
+                        size={20} 
+                        color={role === 'patient' ? Colors.textWhite : Colors.primary}
+                      />
+                      <Text style={[styles.roleText, role === 'patient' && styles.roleTextActive]}>
+                        Patient
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.roleButton, role === 'doctor' && styles.roleButtonActive]}
+                      onPress={() => setRole('doctor')}
+                    >
+                      <Ionicons 
+                        name="medical" 
+                        size={20} 
+                        color={role === 'doctor' ? Colors.textWhite : Colors.primary}
+                      />
+                      <Text style={[styles.roleText, role === 'doctor' && styles.roleTextActive]}>
+                        Doctor
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
 
-            {/* Login Button */}
-            <TouchableOpacity
-              style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
-              onPress={handleLogin}
-              disabled={isLoading}
-            >
-              <Text style={styles.loginButtonText}>
-                {isLoading ? 'Signing In...' : 'Sign In'}
-              </Text>
-            </TouchableOpacity>
+                {/* Send OTP Button */}
+                <TouchableOpacity
+                  style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                  onPress={handleSendOTP}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.loginButtonText}>
+                    {isLoading ? 'Sending OTP...' : 'Send OTP'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                {/* OTP Input */}
+                <View style={styles.inputContainer}>
+                  <Ionicons
+                    name="key-outline"
+                    size={20}
+                    color={Colors.textSecondary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter 4-digit OTP"
+                    placeholderTextColor={Colors.textLight}
+                    value={otp}
+                    onChangeText={setOtp}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                  />
+                </View>
+
+                {/* Verify Button */}
+                <TouchableOpacity
+                  style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                  onPress={handleVerifyOTP}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.loginButtonText}>
+                    {isLoading ? 'Verifying...' : 'Verify OTP'}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Resend OTP */}
+                <TouchableOpacity 
+                  style={styles.forgotPassword}
+                  onPress={() => {
+                    setOtpSent(false);
+                    setOtp('');
+                  }}
+                >
+                  <Text style={styles.forgotPasswordText}>Change Phone Number</Text>
+                </TouchableOpacity>
+              </>
+            )}
 
             {/* Divider */}
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>or continue with</Text>
+              <Text style={styles.dividerText}>Secure Authentication</Text>
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Social Login */}
-            <View style={styles.socialContainer}>
-              <TouchableOpacity style={styles.socialButton}>
-                <Ionicons name="logo-google" size={24} color="#DB4437" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton}>
-                <Ionicons name="logo-apple" size={24} color={Colors.textPrimary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.socialButton}>
-                <Ionicons name="logo-facebook" size={24} color="#4267B2" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Register Link */}
+            {/* Info Text */}
             <View style={styles.registerContainer}>
-              <Text style={styles.registerText}>Don't have an account? </Text>
-              <TouchableOpacity onPress={() => navigation.navigate('Register')}>
-                <Text style={styles.registerLink}>Sign Up</Text>
-              </TouchableOpacity>
+              <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
+              <Text style={styles.registerText}> Your data is protected with OTP verification</Text>
             </View>
           </View>
         </ScrollView>
@@ -236,9 +396,45 @@ const styles = StyleSheet.create({
   eyeIcon: {
     padding: Spacing.xs,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
+  roleContainer: {
     marginBottom: Spacing.xl,
+  },
+  roleLabel: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.sm,
+    fontWeight: Typography.fontWeights.medium,
+  },
+  roleButtons: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  roleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.md,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.primary,
+    backgroundColor: Colors.background,
+    gap: Spacing.xs,
+  },
+  roleButtonActive: {
+    backgroundColor: Colors.primary,
+  },
+  roleText: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.primary,
+    fontWeight: Typography.fontWeights.semibold,
+  },
+  roleTextActive: {
+    color: Colors.textWhite,
+  },
+  forgotPassword: {
+    alignSelf: 'center',
+    marginTop: Spacing.md,
   },
   forgotPasswordText: {
     fontSize: Typography.fontSizes.md,
@@ -304,5 +500,29 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSizes.md,
     color: Colors.primary,
     fontWeight: Typography.fontWeights.semibold,
+  },
+  testModeToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+  },
+  testModeToggleActive: {
+    backgroundColor: '#FFF3CD',
+    borderWidth: 1,
+    borderColor: '#FFC107',
+  },
+  testModeToggleText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  testModeToggleTextActive: {
+    color: '#856404',
   },
 });

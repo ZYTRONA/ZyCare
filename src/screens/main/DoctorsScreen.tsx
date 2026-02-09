@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows, MEDICAL_SPECIALTIES } from '../../constants/theme';
 import { RootStackParamList, Doctor } from '../../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type DoctorsScreenRouteProp = RouteProp<RootStackParamList, 'Doctors'>;
 
 // Mock data
 const DOCTORS: Doctor[] = [
@@ -96,8 +97,16 @@ const DOCTORS: Doctor[] = [
 
 export default function DoctorsScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<DoctorsScreenRouteProp>();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState<string | null>(null);
+
+  // Set initial specialty filter from navigation params
+  useEffect(() => {
+    if (route.params?.filterSpecialty) {
+      setSelectedSpecialty(route.params.filterSpecialty);
+    }
+  }, [route.params?.filterSpecialty]);
 
   const filteredDoctors = DOCTORS.filter((doctor) => {
     const matchesSearch = doctor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -145,7 +154,7 @@ export default function DoctorsScreen() {
           </View>
           <View style={styles.metaItem}>
             <Ionicons name="cash-outline" size={14} color={Colors.textSecondary} />
-            <Text style={styles.metaText}>${item.consultationFee}</Text>
+            <Text style={styles.metaText}>₹{item.consultationFee}</Text>
           </View>
         </View>
       </View>

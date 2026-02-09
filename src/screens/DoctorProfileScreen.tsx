@@ -160,21 +160,21 @@ export default function DoctorProfileScreen() {
                 <Ionicons name="videocam" size={24} color={Colors.primary} />
               </View>
               <Text style={styles.optionTitle}>Video Call</Text>
-              <Text style={styles.optionPrice}>${doctor.consultationFee}</Text>
+              <Text style={styles.optionPrice}>₹{doctor.consultationFee}</Text>
             </View>
             <View style={styles.consultationOption}>
               <View style={[styles.optionIcon, { backgroundColor: Colors.secondary + '20' }]}>
                 <Ionicons name="call" size={24} color={Colors.secondary} />
               </View>
               <Text style={styles.optionTitle}>Voice Call</Text>
-              <Text style={styles.optionPrice}>${doctor.consultationFee - 10}</Text>
+              <Text style={styles.optionPrice}>₹{doctor.consultationFee - 50}</Text>
             </View>
             <View style={styles.consultationOption}>
               <View style={[styles.optionIcon, { backgroundColor: Colors.accent + '20' }]}>
                 <Ionicons name="chatbubble" size={24} color={Colors.accent} />
               </View>
               <Text style={styles.optionTitle}>Chat</Text>
-              <Text style={styles.optionPrice}>${doctor.consultationFee - 20}</Text>
+              <Text style={styles.optionPrice}>₹{doctor.consultationFee - 100}</Text>
             </View>
           </View>
         </View>
@@ -236,7 +236,7 @@ export default function DoctorProfileScreen() {
       <View style={styles.bottomBar}>
         <View style={styles.priceContainer}>
           <Text style={styles.priceLabel}>Consultation Fee</Text>
-          <Text style={styles.priceValue}>${doctor.consultationFee}</Text>
+          <Text style={styles.priceValue}>₹{doctor.consultationFee}</Text>
         </View>
         <TouchableOpacity
           style={styles.bookButton}

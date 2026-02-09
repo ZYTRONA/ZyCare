@@ -339,7 +339,7 @@ export default function BookAppointmentScreen() {
           <View style={styles.summaryDivider} />
           <View style={styles.summaryRow}>
             <Text style={styles.totalLabel}>Total Amount</Text>
-            <Text style={styles.totalValue}>${getConsultationFee()}</Text>
+            <Text style={styles.totalValue}>₹{getConsultationFee()}</Text>
           </View>
         </View>
       </ScrollView>

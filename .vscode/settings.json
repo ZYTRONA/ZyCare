@@ -1,0 +1,15 @@
+{
+  "cSpell.words": [
+    "dotenv",
+    "genai",
+    "generativeai",
+    "ZYCARE",
+    "groq",
+    "GROQ",
+    "Groq"
+  ],
+  "python.defaultInterpreterPath": "${workspaceFolder}/ai-engine/venv/bin/python",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/ai-engine/venv/lib/python3.14/site-packages"
+  ]
+}

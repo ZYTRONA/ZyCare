@@ -2,6 +2,11 @@
   "expo": {
     "name": "ZYCARE",
     "slug": "zycare",
+    "extra": {
+      "EXPO_PUBLIC_API_URL": "http://10.56.198.1:5000",
+      "EXPO_PUBLIC_SOCKET_URL": "http://10.56.198.1:5000",
+      "EXPO_PUBLIC_AI_ENGINE_URL": "http://10.56.198.1:8000"
+    },
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -13,13 +18,19 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs access to the microphone for voice input to the AI Nurse chatbot."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "permissions": [
+        "RECORD_AUDIO"
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },

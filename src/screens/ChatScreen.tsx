@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,156 +8,246 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useAudioRecorder, AudioModule } from 'expo-audio';
 
-import { Colors, Typography, Spacing, Shadows } from '../constants/theme';
-import { RootStackParamList, ChatMessage } from '../types';
+import { Colors, Typography, Spacing } from '../constants/theme';
+import { RootStackParamList } from '../types';
+import { aiNurseAPI, speechAPI } from '../services/aiNurse';
+import { useAuthStore } from '../store';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-type RouteProps = RouteProp<RootStackParamList, 'ChatScreen'>;
 
-// Mock messages
-const INITIAL_MESSAGES: ChatMessage[] = [
-  {
-    id: '1',
-    senderId: 'doctor',
-    senderName: 'Dr. Sarah Johnson',
-    senderRole: 'doctor',
-    message: 'Hello! I can see you have some symptoms you would like to discuss. How can I help you today?',
-    timestamp: '10:00 AM',
-    type: 'text',
-  },
-  {
-    id: '2',
-    senderId: 'patient',
-    senderName: 'John Doe',
-    senderRole: 'patient',
-    message: 'Hi Doctor, I have been experiencing headaches for the past 3 days along with mild fever.',
-    timestamp: '10:02 AM',
-    type: 'text',
-  },
-  {
-    id: '3',
-    senderId: 'doctor',
-    senderName: 'Dr. Sarah Johnson',
-    senderRole: 'doctor',
-    message: 'I understand. Can you tell me more about the headache? Is it constant or does it come and go? Which part of your head hurts the most?',
-    timestamp: '10:03 AM',
-    type: 'text',
-  },
-  {
-    id: '4',
-    senderId: 'patient',
-    senderName: 'John Doe',
-    senderRole: 'patient',
-    message: 'It is mostly on the front part of my head, and it comes and goes. The pain increases when I look at screens.',
-    timestamp: '10:05 AM',
-    type: 'text',
-  },
-  {
-    id: '5',
-    senderId: 'doctor',
-    senderName: 'Dr. Sarah Johnson',
-    senderRole: 'doctor',
-    message: 'Based on your symptoms, this could be a tension headache or possibly eye strain related. I would recommend taking some rest and avoiding screens for a while. Let me prescribe some medication for you.',
-    timestamp: '10:07 AM',
-    type: 'text',
-  },
-];
+interface Message {
+  id: string;
+  text: string;
+  sender: 'user' | 'nurse';
+  timestamp: Date;
+  language?: string;
+}
 
 export default function ChatScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const route = useRoute<RouteProps>();
+  const user = useAuthStore((state: any) => state.user);
   const flatListRef = useRef<FlatList>(null);
 
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '0',
+      text: `Namaste ${user?.name || 'there'}! 🙏 I'm your AI Nurse Assistant. I can help you in English, தமிழ், or हिंदी. How can I assist you today?`,
+      sender: 'nurse',
+      timestamp: new Date(),
+      language: 'en'
+    }
+  ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const audioRecorder = useAudioRecorder({
+    android: {
+      extension: '.m4a',
+      outputFormat: 'mpeg4',
+      audioEncoder: 'aac',
+      sampleRate: 44100,
+    },
+    ios: {
+      extension: '.m4a',
+      audioQuality: 'high',
+      sampleRate: 44100,
+    },
+    web: {
+      mimeType: 'audio/webm',
+      bitsPerSecond: 128000,
+    },
+  } as any);
 
-  const sendMessage = () => {
+  useEffect(() => {
+    // Request audio permissions on mount
+    (async () => {
+      await AudioModule.requestRecordingPermissionsAsync();
+    })();
+  }, []);
+
+  useEffect(() => {
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+  }, [messages]);
+
+  const sendMessage = async () => {
     if (!inputMessage.trim()) return;
 
-    const newMessage: ChatMessage = {
+    const userMessage: Message = {
       id: Date.now().toString(),
-      senderId: 'patient',
-      senderName: 'John Doe',
-      senderRole: 'patient',
-      message: inputMessage,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      type: 'text',
+      text: inputMessage,
+      sender: 'user',
+      timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, newMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInputMessage('');
-
-    // Simulate doctor typing
     setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      const doctorReply: ChatMessage = {
+
+    try {
+      const history = messages.slice(-6).map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'assistant',
+        content: msg.text
+      }));
+
+      const response = await aiNurseAPI.sendMessage(inputMessage, history);
+
+      const nurseMessage: Message = {
         id: (Date.now() + 1).toString(),
-        senderId: 'doctor',
-        senderName: 'Dr. Sarah Johnson',
-        senderRole: 'doctor',
-        message: 'Thank you for the information. I will review this and get back to you shortly.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: 'text',
+        text: response.reply,
+        sender: 'nurse',
+        timestamp: new Date(),
+        language: response.language
       };
-      setMessages((prev) => [...prev, doctorReply]);
-    }, 2000);
+
+      setMessages((prev) => [...prev, nurseMessage]);
+    } catch (error: any) {
+      console.error('Chat error:', error);
+      
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "I apologize, but I'm having trouble connecting right now. Please try again in a moment, or if this is urgent, please consult with a doctor immediately. 🏥",
+        sender: 'nurse',
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
-  const renderMessage = ({ item }: { item: ChatMessage }) => {
-    const isPatient = item.senderRole === 'patient';
-    const isAI = item.senderRole === 'ai';
+  const handleVoiceInput = async () => {
+    try {
+      if (isRecording) {
+        // Stop recording
+        if (!audioRecorder.isRecording) {
+          setIsRecording(false);
+          return;
+        }
+        
+        setIsRecording(false);
+        const uri = await audioRecorder.stop();
+        
+        // Check if recording was successful and has a URI
+        if (!audioRecorder.uri) {
+          Alert.alert('Error', 'Failed to save recording');
+          return;
+        }
+        
+        const recordingUri = audioRecorder.uri;
+
+        // Show processing message
+        setIsTyping(true);
+        
+        try {
+          // Transcribe audio using Groq Whisper
+          const transcriptionResult = await speechAPI.transcribe(recordingUri);
+          
+          if (transcriptionResult.text) {
+            // Send transcribed text as message
+            const userMessage: Message = {
+              id: Date.now().toString(),
+              text: transcriptionResult.text,
+              sender: 'user',
+              timestamp: new Date(),
+            };
+
+            setMessages((prev) => [...prev, userMessage]);
+
+            // Get AI response
+            const history = messages.slice(-6).map(msg => ({
+              role: msg.sender === 'user' ? 'user' : 'assistant',
+              content: msg.text
+            }));
+
+            const response = await aiNurseAPI.sendMessage(transcriptionResult.text, history);
+
+            const nurseMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              text: response.reply,
+              sender: 'nurse',
+              timestamp: new Date(),
+              language: response.language
+            };
+
+            setMessages((prev) => [...prev, nurseMessage]);
+          } else {
+            Alert.alert('No speech detected', 'Please try speaking again.');
+          }
+        } catch (error) {
+          console.error('Transcription error:', error);
+          Alert.alert(
+            'Transcription Failed',
+            'Could not transcribe your voice. Please try again or type your message.'
+          );
+        } finally {
+          setIsTyping(false);
+        }
+      } else {
+        // Start recording
+        const { granted } = await AudioModule.requestRecordingPermissionsAsync();
+        
+        if (!granted) {
+          Alert.alert(
+            'Permission Required',
+            'Please grant microphone permission to use voice input.'
+          );
+          return;
+        }
+
+        const isCurrentlyRecording = audioRecorder.isRecording;
+        if (isCurrentlyRecording) {
+          return;
+        }
+
+        await audioRecorder.record();
+        setIsRecording(true);
+      }
+    } catch (error) {
+      console.error('Voice input error:', error);
+      Alert.alert(
+        'Voice Input Error',
+        'Failed to process voice input. Please try again.'
+      );
+      setIsRecording(false);
+    }
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-IN', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'Asia/Kolkata'
+    });
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const isUser = item.sender === 'user';
 
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          isPatient ? styles.messageContainerRight : styles.messageContainerLeft,
-        ]}
-      >
-        {!isPatient && (
-          <View style={[styles.avatarSmall, isAI && styles.avatarAI]}>
-            <Ionicons
-              name={isAI ? 'sparkles' : 'person'}
-              size={16}
-              color={isAI ? Colors.accent : Colors.primary}
-            />
-          </View>
-        )}
-        <View
-          style={[
-            styles.messageBubble,
-            isPatient ? styles.messageBubbleRight : styles.messageBubbleLeft,
-            isAI && styles.messageBubbleAI,
-          ]}
-        >
-          {!isPatient && (
-            <Text style={[styles.senderName, isAI && styles.senderNameAI]}>
-              {isAI ? 'AI Assistant' : item.senderName}
-            </Text>
+      <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.nurseMessageContainer]}>
+        <View style={[styles.messageBubble, isUser ? styles.userBubble : styles.nurseBubble]}>
+          {!isUser && (
+            <View style={styles.nurseHeader}>
+              <Ionicons name="medical" size={16} color={Colors.primary} />
+              <Text style={styles.nurseLabel}>AI Nurse</Text>
+            </View>
           )}
-          <Text
-            style={[
-              styles.messageText,
-              isPatient && styles.messageTextRight,
-            ]}
-          >
-            {item.message}
+          <Text style={[styles.messageText, isUser ? styles.userText : styles.nurseText]}>
+            {item.text}
           </Text>
-          <Text
-            style={[
-              styles.messageTime,
-              isPatient && styles.messageTimeRight,
-            ]}
-          >
-            {item.timestamp}
+          <Text style={[styles.messageTime, isUser ? styles.userTime : styles.nurseTime]}>
+            {formatTime(item.timestamp)}
           </Text>
         </View>
       </View>
@@ -165,117 +255,80 @@ export default function ChatScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <Ionicons name="person" size={24} color={Colors.primary} />
-            </View>
-            <View style={styles.onlineIndicator} />
+          <View style={styles.headerIconContainer}>
+            <Ionicons name="medical" size={24} color={Colors.primary} />
           </View>
           <View>
-            <Text style={styles.doctorName}>{route.params?.doctorName || 'Dr. Sarah Johnson'}</Text>
-            <Text style={styles.onlineStatus}>Online</Text>
+            <Text style={styles.headerTitle}>AI Nurse Assistant</Text>
+            <Text style={styles.headerSubtitle}>🇮🇳 English • தமிழ் • हिंदी</Text>
           </View>
         </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="call" size={22} color={Colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="videocam" size={22} color={Colors.primary} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity style={styles.infoButton}>
+          <Ionicons name="information-circle-outline" size={24} color={Colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
-      {/* Messages List */}
       <FlatList
         ref={flatListRef}
         data={messages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.messagesContainer}
         onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
       />
 
-      {/* Typing Indicator */}
       {isTyping && (
         <View style={styles.typingContainer}>
           <View style={styles.typingBubble}>
-            <View style={styles.typingDots}>
-              <View style={[styles.typingDot, { opacity: 0.4 }]} />
-              <View style={[styles.typingDot, { opacity: 0.6 }]} />
-              <View style={[styles.typingDot, { opacity: 0.8 }]} />
-            </View>
-            <Text style={styles.typingText}>Dr. Sarah is typing...</Text>
+            <ActivityIndicator size="small" color={Colors.primary} />
+            <Text style={styles.typingText}>AI Nurse is typing...</Text>
           </View>
         </View>
       )}
 
-      {/* Input Area */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachButton}>
-            <Ionicons name="attach" size={24} color={Colors.textSecondary} />
-          </TouchableOpacity>
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Type your message..."
-              placeholderTextColor={Colors.textLight}
-              value={inputMessage}
-              onChangeText={setInputMessage}
-              multiline
-              maxLength={500}
-            />
-            <TouchableOpacity style={styles.emojiButton}>
-              <Ionicons name="happy-outline" size={24} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity
-            style={[
-              styles.sendButton,
-              inputMessage.trim() && styles.sendButtonActive,
-            ]}
-            onPress={sendMessage}
-            disabled={!inputMessage.trim()}
+          <TouchableOpacity 
+            style={[styles.voiceButton, isRecording && styles.voiceButtonRecording]}
+            onPress={handleVoiceInput}
+            disabled={isTyping}
           >
-            <Ionicons
-              name="send"
-              size={20}
-              color={inputMessage.trim() ? Colors.textWhite : Colors.textSecondary}
+            <Ionicons 
+              name={isRecording ? "stop-circle" : "mic"} 
+              size={24} 
+              color={isRecording ? Colors.error : Colors.primary} 
             />
+          </TouchableOpacity>
+          
+          <TextInput
+            style={styles.input}
+            placeholder={isRecording ? "Recording..." : "Type your message... (English/Tamil/Hindi)"}
+            placeholderTextColor={Colors.textLight}
+            value={inputMessage}
+            onChangeText={setInputMessage}
+            multiline
+            maxLength={500}
+            editable={!isRecording && !isTyping}
+          />
+          
+          <TouchableOpacity
+            style={[styles.sendButton, !inputMessage.trim() && styles.sendButtonDisabled]}
+            onPress={sendMessage}
+            disabled={!inputMessage.trim() || isTyping}
+          >
+            <Ionicons name="send" size={20} color={Colors.textWhite} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-
-      {/* Quick Actions */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity style={styles.quickActionButton}>
-          <Ionicons name="document-text-outline" size={18} color={Colors.primary} />
-          <Text style={styles.quickActionText}>Share Report</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.quickActionButton}>
-          <Ionicons name="image-outline" size={18} color={Colors.primary} />
-          <Text style={styles.quickActionText}>Send Image</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.quickActionButton}>
-          <Ionicons name="medical-outline" size={18} color={Colors.primary} />
-          <Text style={styles.quickActionText}>Symptoms</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }
@@ -295,133 +348,93 @@ const styles = StyleSheet.create({
     borderBottomColor: Colors.border,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    marginRight: Spacing.md,
   },
   headerInfo: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: Spacing.sm,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginRight: Spacing.md,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primaryLight + '30',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.success,
-    borderWidth: 2,
-    borderColor: Colors.cardBackground,
-  },
-  doctorName: {
-    fontSize: Typography.fontSizes.lg,
-    fontWeight: Typography.fontWeights.semibold,
-    color: Colors.textPrimary,
-  },
-  onlineStatus: {
-    fontSize: Typography.fontSizes.sm,
-    color: Colors.success,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-  },
-  headerButton: {
+  headerIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.primaryLight + '20',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  messagesList: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-  },
-  messageContainer: {
-    flexDirection: 'row',
-    marginBottom: Spacing.md,
-    alignItems: 'flex-end',
-  },
-  messageContainerLeft: {
-    justifyContent: 'flex-start',
-  },
-  messageContainerRight: {
-    justifyContent: 'flex-end',
-  },
-  avatarSmall: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.primaryLight + '30',
+    backgroundColor: Colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: Spacing.sm,
   },
-  avatarAI: {
-    backgroundColor: Colors.accent + '30',
+  headerTitle: {
+    fontSize: Typography.fontSizes.lg,
+    fontWeight: Typography.fontWeights.bold,
+    color: Colors.textPrimary,
+  },
+  headerSubtitle: {
+    fontSize: Typography.fontSizes.sm,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  infoButton: {
+    marginLeft: Spacing.sm,
+  },
+  messagesContainer: {
+    padding: Spacing.lg,
+  },
+  messageContainer: {
+    marginBottom: Spacing.md,
+  },
+  userMessageContainer: {
+    alignItems: 'flex-end',
+  },
+  nurseMessageContainer: {
+    alignItems: 'flex-start',
   },
   messageBubble: {
-    maxWidth: '75%',
+    maxWidth: '80%',
     padding: Spacing.md,
     borderRadius: 16,
   },
-  messageBubbleLeft: {
-    backgroundColor: Colors.cardBackground,
-    borderBottomLeftRadius: 4,
-    ...Shadows.small,
-  },
-  messageBubbleRight: {
+  userBubble: {
     backgroundColor: Colors.primary,
     borderBottomRightRadius: 4,
   },
-  messageBubbleAI: {
-    backgroundColor: Colors.accent + '15',
+  nurseBubble: {
+    backgroundColor: Colors.cardBackground,
     borderWidth: 1,
-    borderColor: Colors.accent + '30',
+    borderColor: Colors.border,
+    borderBottomLeftRadius: 4,
   },
-  senderName: {
+  nurseHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+    gap: 6,
+  },
+  nurseLabel: {
     fontSize: Typography.fontSizes.sm,
     fontWeight: Typography.fontWeights.semibold,
     color: Colors.primary,
-    marginBottom: Spacing.xs,
-  },
-  senderNameAI: {
-    color: Colors.accent,
   },
   messageText: {
     fontSize: Typography.fontSizes.md,
-    color: Colors.textPrimary,
-    lineHeight: 22,
+    lineHeight: 20,
   },
-  messageTextRight: {
+  userText: {
     color: Colors.textWhite,
+  },
+  nurseText: {
+    color: Colors.textPrimary,
   },
   messageTime: {
     fontSize: Typography.fontSizes.xs,
-    color: Colors.textLight,
     marginTop: Spacing.xs,
-    alignSelf: 'flex-end',
   },
-  messageTimeRight: {
-    color: 'rgba(255,255,255,0.7)',
+  userTime: {
+    color: Colors.textWhite + 'CC',
+    textAlign: 'right',
+  },
+  nurseTime: {
+    color: Colors.textSecondary,
   },
   typingContainer: {
     paddingHorizontal: Spacing.lg,
@@ -434,19 +447,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
     alignSelf: 'flex-start',
-    ...Shadows.small,
-  },
-  typingDots: {
-    flexDirection: 'row',
-    gap: 4,
-    marginRight: Spacing.sm,
-  },
-  typingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.textSecondary,
+    gap: 8,
   },
   typingText: {
     fontSize: Typography.fontSizes.sm,
@@ -456,69 +460,45 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    padding: Spacing.lg,
     backgroundColor: Colors.cardBackground,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
   },
-  attachButton: {
-    width: 44,
-    height: 44,
+  voiceButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary + '20',
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: Spacing.sm,
   },
-  inputWrapper: {
+  voiceButtonRecording: {
+    backgroundColor: Colors.error + '20',
+  },
+  input: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    maxHeight: 100,
     backgroundColor: Colors.background,
-    borderRadius: 24,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    marginHorizontal: Spacing.sm,
-  },
-  textInput: {
-    flex: 1,
+    borderRadius: 20,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
     fontSize: Typography.fontSizes.md,
     color: Colors.textPrimary,
-    maxHeight: 100,
-    paddingVertical: Spacing.sm,
-  },
-  emojiButton: {
-    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.disabled,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: Spacing.sm,
   },
-  sendButtonActive: {
-    backgroundColor: Colors.primary,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.cardBackground,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
-  },
-  quickActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    backgroundColor: Colors.primaryLight + '20',
-    borderRadius: 20,
-  },
-  quickActionText: {
-    fontSize: Typography.fontSizes.sm,
-    color: Colors.primary,
-    fontWeight: Typography.fontWeights.medium,
+  sendButtonDisabled: {
+    opacity: 0.5,
   },
 });

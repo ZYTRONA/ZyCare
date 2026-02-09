@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
+import { useAuthStore } from '../../store';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -74,10 +76,25 @@ const MENU_ITEMS = [
 
 export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const user = useAuthStore((state: any) => state.user);
+  const logout = useAuthStore((state: any) => state.logout);
 
   const handleLogout = () => {
-    // TODO: Implement logout functionality
-    navigation.navigate('Login');
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Logout', 
+          style: 'destructive',
+          onPress: () => {
+            logout();
+            navigation.navigate('Login');
+          }
+        },
+      ]
+    );
   };
 
   return (
@@ -101,23 +118,18 @@ export default function ProfileScreen() {
               <Ionicons name="camera" size={16} color={Colors.textWhite} />
             </TouchableOpacity>
           </View>
-          <Text style={styles.userName}>{USER.name}</Text>
-          <Text style={styles.userEmail}>{USER.email}</Text>
+          <Text style={styles.userName}>{user?.name || 'User'}</Text>
+          <Text style={styles.userEmail}>{user?.phone || 'No phone'}</Text>
 
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>12</Text>
-              <Text style={styles.statLabel}>Appointments</Text>
+              <Text style={styles.statValue}>{user?.role === 'doctor' ? 'Doctor' : 'Patient'}</Text>
+              <Text style={styles.statLabel}>Role</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>5</Text>
-              <Text style={styles.statLabel}>Doctors</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>3</Text>
-              <Text style={styles.statLabel}>Records</Text>
+              <Text style={styles.statValue}>{user?.userId?.slice(0, 8) || 'N/A'}</Text>
+              <Text style={styles.statLabel}>User ID</Text>
             </View>
           </View>
         </View>
@@ -130,17 +142,17 @@ export default function ProfileScreen() {
               <View style={styles.healthItem}>
                 <Ionicons name="water" size={20} color={Colors.error} />
                 <Text style={styles.healthLabel}>Blood Type</Text>
-                <Text style={styles.healthValue}>{USER.bloodType}</Text>
+                <Text style={styles.healthValue}>N/A</Text>
               </View>
               <View style={styles.healthItem}>
                 <Ionicons name="resize-outline" size={20} color={Colors.primary} />
                 <Text style={styles.healthLabel}>Height</Text>
-                <Text style={styles.healthValue}>{USER.height}</Text>
+                <Text style={styles.healthValue}>N/A</Text>
               </View>
               <View style={styles.healthItem}>
                 <Ionicons name="barbell-outline" size={20} color={Colors.secondary} />
                 <Text style={styles.healthLabel}>Weight</Text>
-                <Text style={styles.healthValue}>{USER.weight}</Text>
+                <Text style={styles.healthValue}>N/A</Text>
               </View>
             </View>
           </View>

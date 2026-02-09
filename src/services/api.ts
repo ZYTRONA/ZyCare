@@ -216,6 +216,17 @@ export const symptomCheckerAPI = {
       suggestedSpecialties: ['General Physician', 'ENT Specialist'],
     };
   },
+
+  async analyzeWithImage(data: {
+    symptoms: string[];
+    duration: string;
+    additionalInfo?: string;
+    imageUri?: string | null;
+  }): Promise<AISymptomAnalysis> {
+    // This is a TypeScript definition that matches the JavaScript implementation
+    // The actual implementation is in api.js which is imported at runtime
+    throw new Error('This method should be imported from api.js');
+  },
 };
 
 /**

@@ -1,3 +1,5 @@
+import { NavigatorScreenParams } from '@react-navigation/native';
+
 // User Types
 export interface User {
   id: string;
@@ -58,6 +60,8 @@ export interface AISymptomAnalysis {
   urgencyLevel: 'low' | 'medium' | 'high' | 'emergency';
   recommendations: string[];
   suggestedSpecialties: string[];
+  imageFindings?: string; // Visual analysis from AI if image was provided
+  imageAnalyzed?: boolean; // Whether an image was included in the analysis
 }
 
 export interface PossibleCondition {
@@ -105,7 +109,7 @@ export interface ChatMessage {
 // Navigation Types
 export type RootStackParamList = {
   Auth: undefined;
-  MainTabs: undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Login: undefined;
   Register: undefined;
   DoctorProfile: { doctorId: string };
@@ -113,12 +117,14 @@ export type RootStackParamList = {
   Consultation: { appointmentId: string };
   SymptomChecker: undefined;
   MedicalRecords: undefined;
+  Chat: undefined;
   ChatScreen: { appointmentId: string; doctorName: string };
+  VideoCall: { roomId?: string; doctorName?: string };
 };
 
 export type MainTabParamList = {
   Home: undefined;
-  Doctors: undefined;
+  Doctors: { filterSpecialty?: string } | undefined;
   Appointments: undefined;
   Profile: undefined;
 };

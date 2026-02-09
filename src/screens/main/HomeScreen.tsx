@@ -14,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows } from '../../constants/theme';
 import { RootStackParamList, Doctor, Appointment } from '../../types';
+import { useAuthStore } from '../../store';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -40,7 +41,7 @@ const TOP_DOCTORS: Doctor[] = [
     qualifications: ['MBBS', 'MD'],
     experience: 12,
     rating: 4.8,
-    consultationFee: 50,
+    consultationFee: 500,
     bio: 'Experienced general physician with expertise in preventive care.',
   },
   {
@@ -52,7 +53,7 @@ const TOP_DOCTORS: Doctor[] = [
     qualifications: ['MBBS', 'DM Cardiology'],
     experience: 15,
     rating: 4.9,
-    consultationFee: 80,
+    consultationFee: 1200,
     bio: 'Renowned cardiologist specializing in heart diseases.',
   },
   {
@@ -64,20 +65,23 @@ const TOP_DOCTORS: Doctor[] = [
     qualifications: ['MBBS', 'MD Dermatology'],
     experience: 8,
     rating: 4.7,
-    consultationFee: 60,
+    consultationFee: 800,
     bio: 'Skin care specialist with expertise in cosmetic dermatology.',
   },
 ];
 
 const QUICK_SERVICES = [
   { id: '1', name: 'AI Symptom\nChecker', icon: 'analytics', color: Colors.primary, route: 'SymptomChecker' },
-  { id: '2', name: 'Find\nDoctors', icon: 'medical', color: Colors.secondary, route: 'Doctors' },
-  { id: '3', name: 'Book\nAppointment', icon: 'calendar', color: Colors.accent, route: 'Doctors' },
-  { id: '4', name: 'Medical\nRecords', icon: 'document-text', color: Colors.info, route: 'MedicalRecords' },
+  { id: '2', name: 'AI Nurse\nChat', icon: 'chatbubbles', color: '#10B981', route: 'Chat' },
+  { id: '3', name: 'Find\nDoctors', icon: 'medical', color: Colors.secondary, route: 'Doctors' },
+  { id: '4', name: 'Book\nAppointment', icon: 'calendar', color: Colors.accent, route: 'Doctors' },
+  { id: '5', name: 'Video\nCall', icon: 'videocam', color: '#8B5CF6', route: 'VideoCall' },
+  { id: '6', name: 'Medical\nRecords', icon: 'document-text', color: Colors.info, route: 'MedicalRecords' },
 ];
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const user = useAuthStore((state: any) => state.user);
 
   const renderQuickService = ({ item }: { item: typeof QUICK_SERVICES[0] }) => (
     <TouchableOpacity
@@ -85,6 +89,12 @@ export default function HomeScreen() {
       onPress={() => {
         if (item.route === 'SymptomChecker') {
           navigation.navigate('SymptomChecker');
+        } else if (item.route === 'Chat') {
+          navigation.navigate('Chat');
+        } else if (item.route === 'VideoCall') {
+          navigation.navigate('VideoCall');
+        } else if (item.route === 'Doctors') {
+          navigation.navigate('MainTabs', { screen: 'Doctors' });
         }
       }}
     >
@@ -114,7 +124,7 @@ export default function HomeScreen() {
           <Text style={styles.experienceText}>{item.experience} yrs exp</Text>
         </View>
       </View>
-      <Text style={styles.doctorFee}>${item.consultationFee}</Text>
+      <Text style={styles.doctorFee}>₹{item.consultationFee}</Text>
     </TouchableOpacity>
   );
 
@@ -125,7 +135,7 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.greeting}>Hello,</Text>
-            <Text style={styles.username}>John Doe</Text>
+            <Text style={styles.username}>{user?.name || 'Guest'}</Text>
           </View>
           <TouchableOpacity style={styles.notificationButton}>
             <Ionicons name="notifications-outline" size={24} color={Colors.textPrimary} />

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { RootStackParamList, MainTabParamList } from '../types';
 import { Colors } from '../constants/theme';
+import { useAuthStore } from '../store';
 
 // Auth Screens
 import LoginScreen from '../screens/auth/LoginScreen';
@@ -23,6 +24,9 @@ import BookAppointmentScreen from '../screens/BookAppointmentScreen';
 import SymptomCheckerScreen from '../screens/SymptomCheckerScreen';
 import ConsultationScreen from '../screens/ConsultationScreen';
 import ChatScreen from '../screens/ChatScreen';
+
+// JS Screens for video call
+import VideoCall from '../screens/main/VideoCall';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -74,8 +78,8 @@ function MainTabs() {
 }
 
 export default function AppNavigator() {
-  // TODO: Add authentication state management
-  const isAuthenticated = false;
+  const isAuthenticated = useAuthStore((state: any) => state.isAuthenticated);
+  const user = useAuthStore((state: any) => state.user);
 
   return (
     <NavigationContainer>
@@ -116,6 +120,16 @@ export default function AppNavigator() {
           name="ChatScreen"
           component={ChatScreen}
           options={{ headerShown: true, title: 'Chat' }}
+        />
+        <Stack.Screen
+          name="Chat"
+          component={ChatScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="VideoCall"
+          component={VideoCall}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>
