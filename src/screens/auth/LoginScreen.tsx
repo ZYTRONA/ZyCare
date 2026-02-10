@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,76 +17,84 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
-import { authAPI } from '../../services/api.js';
-import { useAuthStore } from '../../store';
+import { useAuthStore, useLanguageStore } from '../../store';
+import { generateOTP, sendOTPEmail, verifyOTP, resendOTP } from '../../utils/mail';
+import { t, LanguageCode, languages } from '../../languages';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function LoginScreen() {
   const navigation = useNavigation<NavigationProp>();
   const login = useAuthStore((state: any) => state.login);
+  const language = useLanguageStore((state: any) => state.language);
+  const setLanguage = useLanguageStore((state: any) => state.setLanguage);
   
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [role, setRole] = useState<'patient' | 'doctor'>('patient');
   const [otp, setOtp] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [testMode, setTestMode] = useState(false);
+
+  const validateEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateMobileNumber = (mobile: string) => {
+    const mobileRegex = /^[0-9]{10}$/; // 10 digit Indian mobile number
+    return mobileRegex.test(mobile);
+  };
+
+  const handleLanguageSelect = useCallback((lang: LanguageCode) => {
+    setLanguage(lang);
+  }, [setLanguage]);
+
+  const handleRoleSelect = useCallback((selectedRole: 'patient' | 'doctor') => {
+    setRole(selectedRole);
+  }, []);
 
   const handleSendOTP = async () => {
-    if (!phone || !name) {
-      Alert.alert('Error', 'Please enter phone number and name');
+    if (!email || !name || !mobileNumber) {
+      Alert.alert(t(language as LanguageCode, 'common.error'), t(language as LanguageCode, 'auth.enterAllFields', 'Please enter email, name, and mobile number'));
       return;
     }
 
-    // TEST MODE: Skip API call and use hardcoded OTP
-    if (testMode) {
-      setOtpSent(true);
-      Alert.alert(
-        '🧪 TEST MODE - OTP',
-        'Use OTP: 1234\n\nTest mode bypasses backend for quick testing.',
-        [{ text: 'OK', style: 'default' }]
-      );
+    if (!validateEmail(email)) {
+      Alert.alert(t(language as LanguageCode, 'common.error'), t(language as LanguageCode, 'auth.invalidEmail', 'Please enter a valid email address (e.g., user@example.com)'));
+      return;
+    }
+
+    if (!validateMobileNumber(mobileNumber)) {
+      Alert.alert(t(language as LanguageCode, 'common.error'), t(language as LanguageCode, 'auth.invalidMobile', 'Please enter a valid 10-digit mobile number'));
       return;
     }
     
     setIsLoading(true);
     try {
-      console.log('Sending OTP to:', phone, 'Name:', name, 'Role:', role);
-      const response = await authAPI.login(phone, name, role);
+      console.log('Generating and sending OTP to:', email);
+      
+      // Generate OTP
+      const otp = generateOTP();
+      
+      // Send OTP email
+      const response = await sendOTPEmail(email, name, otp);
       console.log('OTP Response:', response);
       
       if (response.success) {
         setOtpSent(true);
         Alert.alert(
-          'OTP Sent Successfully', 
-          `Your OTP: ${response.otp}\n\nPhone: ${phone}`,
-          [{ text: 'OK', style: 'default' }]
+          t(language as LanguageCode, 'auth.otpSentSuccess', 'OTP Sent Successfully'), 
+          t(language as LanguageCode, 'auth.otpSentMessage', `A 6-digit OTP has been sent to:\n${email}\n\nCheck your email inbox.`),
+          [{ text: t(language as LanguageCode, 'common.ok', 'OK'), style: 'default' }]
         );
       } else {
-        Alert.alert('Error', response.message || 'Failed to send OTP');
+        Alert.alert(t(language as LanguageCode, 'common.error'), response.message || t(language as LanguageCode, 'auth.otpSendFailed', 'Failed to send OTP'));
       }
     } catch (error: any) {
       console.error('OTP Send Error:', error);
-      console.error('Error details:', error.response?.data);
-      
-      // Show test mode option
-      Alert.alert(
-        'Connection Failed', 
-        'Cannot reach backend server.\n\nWould you like to use TEST MODE?\n(Uses hardcoded OTP: 1234)',
-        [
-          {
-            text: 'Use Test Mode',
-            onPress: () => {
-              setTestMode(true);
-              setOtpSent(true);
-              Alert.alert('🧪 TEST MODE', 'Use OTP: 1234');
-            }
-          },
-          { text: 'Cancel', style: 'cancel' }
-        ]
-      );
+      Alert.alert(t(language as LanguageCode, 'common.error'), t(language as LanguageCode, 'auth.otpSendError', 'Failed to send OTP. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -94,27 +102,37 @@ export default function LoginScreen() {
 
   const handleVerifyOTP = async () => {
     if (!otp) {
-      Alert.alert('Error', 'Please enter OTP');
+      Alert.alert(t(language as LanguageCode, 'common.error'), t(language as LanguageCode, 'auth.enterOTP', 'Please enter OTP'));
+      return;
+    }
+
+    if (otp.length !== 6) {
+      Alert.alert(t(language as LanguageCode, 'common.error'), t(language as LanguageCode, 'auth.otpLength', 'OTP must be 6 digits'));
       return;
     }
     
     setIsLoading(true);
     try {
-      console.log('Verifying OTP:', otp, 'for phone:', phone);
-      const response = await authAPI.verifyOTP(phone, otp);
+      console.log('Verifying OTP:', otp, 'for email:', email);
+      const response = await verifyOTP(email, otp);
       console.log('Verify Response:', response);
       
       if (response.success && response.user) {
-        login(response.user);
-        Alert.alert('Success', 'Login successful!');
-        navigation.navigate('MainTabs');
+        // Merge the phone number from login form with user data
+        const userWithPhone = {
+          ...response.user,
+          phone: mobileNumber,
+          name: name || response.user.name,
+        };
+        login(userWithPhone);
+        Alert.alert(t(language as LanguageCode, 'common.success'), t(language as LanguageCode, 'auth.loginSuccess', 'Login successful!'));
+        // Navigation happens automatically when isAuthenticated state changes
       } else {
-        Alert.alert('Error', response.message || 'Invalid OTP');
+        Alert.alert(t(language as LanguageCode, 'common.error'), response.message || t(language as LanguageCode, 'auth.invalidOTP', 'Invalid OTP'));
       }
     } catch (error: any) {
       console.error('OTP Verify Error:', error);
-      console.error('Error details:', error.response?.data);
-      Alert.alert('Error', error.response?.data?.message || error.message || 'Invalid OTP');
+      Alert.alert(t(language as LanguageCode, 'common.error'), error.message || t(language as LanguageCode, 'auth.invalidOTP', 'Invalid OTP'));
     } finally {
       setIsLoading(false);
     }
@@ -137,62 +155,35 @@ export default function LoginScreen() {
             </View>
             <Text style={styles.title}>ZYCARE</Text>
             <Text style={styles.subtitle}>
-              Your AI-powered health companion
+              {t(language as LanguageCode, 'auth.subtitle', 'Your AI-powered health companion')}
             </Text>
-            
-            {/* Test Mode Toggle */}
-            <TouchableOpacity 
-              style={[styles.testModeToggle, testMode && styles.testModeToggleActive]}
-              onPress={() => {
-                setTestMode(!testMode);
-                Alert.alert(
-                  testMode ? 'Test Mode Disabled' : '🧪 Test Mode Enabled',
-                  testMode 
-                    ? 'Switched back to normal mode' 
-                    : 'Use OTP: 1234 to login without backend'
-                );
-              }}
-            >
-              <Ionicons 
-                name={testMode ? "flask" : "flask-outline"} 
-                size={20} 
-                color={testMode ? "#856404" : Colors.textSecondary} 
-              />
-              <Text style={[styles.testModeToggleText, testMode && styles.testModeToggleTextActive]}>
-                {testMode ? '🧪 Test Mode ON' : 'Enable Test Mode'}
-              </Text>
-            </TouchableOpacity>
           </View>
 
           {/* Login Form */}
           <View style={styles.form}>
-            <Text style={styles.formTitle}>Welcome to ZYCARE</Text>
+            <Text style={styles.formTitle}>{t(language as LanguageCode, 'auth.welcomeTitle', 'Welcome to ZYCARE')}</Text>
             <Text style={styles.formSubtitle}>
-              {otpSent ? (testMode ? '🧪 TEST MODE - Use OTP: 1234' : 'Enter OTP sent to your phone') : 'Enter your details to continue'}
+              {otpSent ? t(language as LanguageCode, 'auth.checkEmail', 'Check your email for a 6-digit OTP') : t(language as LanguageCode, 'auth.enterDetails', 'Enter your details to continue')}
             </Text>
-            {testMode && (
-              <View style={styles.testModeBadge}>
-                <Text style={styles.testModeText}>🧪 Test Mode Active</Text>
-              </View>
-            )}
 
             {!otpSent ? (
               <>
-                {/* Phone Input */}
+                {/* Email Input */}
                 <View style={styles.inputContainer}>
                   <Ionicons
-                    name="call-outline"
+                    name="mail-outline"
                     size={20}
                     color={Colors.textSecondary}
                     style={styles.inputIcon}
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Phone Number (+1234567890)"
+                    placeholder={t(language as LanguageCode, 'auth.email', 'Email Address')}
                     placeholderTextColor={Colors.textLight}
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
                   />
                 </View>
 
@@ -206,20 +197,70 @@ export default function LoginScreen() {
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Full Name"
+                    placeholder={t(language as LanguageCode, 'auth.name', 'Full Name')}
                     placeholderTextColor={Colors.textLight}
                     value={name}
                     onChangeText={setName}
                   />
                 </View>
 
+                {/* Mobile Number Input */}
+                <View style={styles.inputContainer}>
+                  <Ionicons
+                    name="call-outline"
+                    size={20}
+                    color={Colors.textSecondary}
+                    style={styles.inputIcon}
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t(language as LanguageCode, 'auth.mobileNumber', 'Mobile Number (10 digits)')}
+                    placeholderTextColor={Colors.textLight}
+                    value={mobileNumber}
+                    onChangeText={setMobileNumber}
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                  />
+                </View>
+
+                {/* Language Selection */}
+                <View style={styles.languageContainer}>
+                  <Text style={styles.languageLabel}>{t(language as LanguageCode, 'auth.selectLanguage', 'Select Language:')}</Text>
+                  <View style={styles.languageButtons}>
+                    <TouchableOpacity
+                      style={[styles.languageButton, language === 'en' && styles.languageButtonActive]}
+                      onPress={() => handleLanguageSelect('en')}
+                    >
+                      <Text style={[styles.languageText, language === 'en' && styles.languageTextActive]}>
+                        English
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.languageButton, language === 'ta' && styles.languageButtonActive]}
+                      onPress={() => handleLanguageSelect('ta')}
+                    >
+                      <Text style={[styles.languageText, language === 'ta' && styles.languageTextActive]}>
+                        தமிழ்
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.languageButton, language === 'hi' && styles.languageButtonActive]}
+                      onPress={() => handleLanguageSelect('hi')}
+                    >
+                      <Text style={[styles.languageText, language === 'hi' && styles.languageTextActive]}>
+                        हिंदी
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
                 {/* Role Selection */}
                 <View style={styles.roleContainer}>
-                  <Text style={styles.roleLabel}>Login as:</Text>
+                  <Text style={styles.roleLabel}>{t(language as LanguageCode, 'auth.loginAs', 'Login as:')}</Text>
                   <View style={styles.roleButtons}>
                     <TouchableOpacity
                       style={[styles.roleButton, role === 'patient' && styles.roleButtonActive]}
-                      onPress={() => setRole('patient')}
+                      onPress={() => handleRoleSelect('patient')}
                     >
                       <Ionicons 
                         name="person" 
@@ -227,12 +268,12 @@ export default function LoginScreen() {
                         color={role === 'patient' ? Colors.textWhite : Colors.primary}
                       />
                       <Text style={[styles.roleText, role === 'patient' && styles.roleTextActive]}>
-                        Patient
+                        {t(language as LanguageCode, 'auth.patient', 'Patient')}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.roleButton, role === 'doctor' && styles.roleButtonActive]}
-                      onPress={() => setRole('doctor')}
+                      onPress={() => handleRoleSelect('doctor')}
                     >
                       <Ionicons 
                         name="medical" 
@@ -240,7 +281,7 @@ export default function LoginScreen() {
                         color={role === 'doctor' ? Colors.textWhite : Colors.primary}
                       />
                       <Text style={[styles.roleText, role === 'doctor' && styles.roleTextActive]}>
-                        Doctor
+                        {t(language as LanguageCode, 'auth.doctor', 'Doctor')}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -253,7 +294,7 @@ export default function LoginScreen() {
                   disabled={isLoading}
                 >
                   <Text style={styles.loginButtonText}>
-                    {isLoading ? 'Sending OTP...' : 'Send OTP'}
+                    {isLoading ? t(language as LanguageCode, 'auth.sendingOTP', 'Sending OTP...') : t(language as LanguageCode, 'auth.sendOTP', 'Send OTP')}
                   </Text>
                 </TouchableOpacity>
               </>
@@ -269,12 +310,12 @@ export default function LoginScreen() {
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter 4-digit OTP"
+                    placeholder={t(language as LanguageCode, 'auth.enterOTP', 'Enter 6-digit OTP')}
                     placeholderTextColor={Colors.textLight}
                     value={otp}
                     onChangeText={setOtp}
                     keyboardType="number-pad"
-                    maxLength={4}
+                    maxLength={6}
                   />
                 </View>
 
@@ -285,19 +326,34 @@ export default function LoginScreen() {
                   disabled={isLoading}
                 >
                   <Text style={styles.loginButtonText}>
-                    {isLoading ? 'Verifying...' : 'Verify OTP'}
+                    {isLoading ? t(language as LanguageCode, 'auth.verifying', 'Verifying...') : t(language as LanguageCode, 'auth.verifyOTP', 'Verify OTP')}
                   </Text>
                 </TouchableOpacity>
 
                 {/* Resend OTP */}
                 <TouchableOpacity 
                   style={styles.forgotPassword}
-                  onPress={() => {
-                    setOtpSent(false);
-                    setOtp('');
+                  onPress={async () => {
+                    if (isLoading) return;
+                    setIsLoading(true);
+                    try {
+                      const otp = generateOTP();
+                      const response = await sendOTPEmail(email, name, otp);
+                      if (response.success) {
+                        setOtp('');
+                        Alert.alert(t(language as LanguageCode, 'auth.otpResent', 'OTP Resent'), t(language as LanguageCode, 'auth.otpResendSuccess', `New OTP sent to ${email}`));
+                      } else {
+                        Alert.alert(t(language as LanguageCode, 'common.error'), response.message || t(language as LanguageCode, 'auth.otpResendFailed', 'Failed to resend OTP'));
+                      }
+                    } catch (error) {
+                      console.error('Resend OTP Error:', error);
+                      Alert.alert(t(language as LanguageCode, 'common.error'), t(language as LanguageCode, 'auth.otpResendError', 'Failed to resend OTP'));
+                    } finally {
+                      setIsLoading(false);
+                    }
                   }}
                 >
-                  <Text style={styles.forgotPasswordText}>Change Phone Number</Text>
+                  <Text style={styles.forgotPasswordText}>{t(language as LanguageCode, 'auth.resendOTP', 'Resend OTP')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -305,14 +361,14 @@ export default function LoginScreen() {
             {/* Divider */}
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>Secure Authentication</Text>
+              <Text style={styles.dividerText}>{t(language as LanguageCode, 'auth.secureAuthentication', 'Secure Authentication')}</Text>
               <View style={styles.dividerLine} />
             </View>
 
             {/* Info Text */}
             <View style={styles.registerContainer}>
               <Ionicons name="shield-checkmark" size={16} color={Colors.success} />
-              <Text style={styles.registerText}> Your data is protected with OTP verification</Text>
+              <Text style={styles.registerText}> {t(language as LanguageCode, 'auth.dataProtected', 'Your data is protected with OTP verification')}</Text>
             </View>
           </View>
         </ScrollView>
@@ -501,28 +557,41 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: Typography.fontWeights.semibold,
   },
-  testModeToggle: {
+  languageContainer: {
+    marginBottom: Spacing.lg,
+  },
+  languageLabel: {
+    fontSize: Typography.fontSizes.md,
+    fontWeight: Typography.fontWeights.semibold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+  },
+  languageButtons: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: Spacing.md,
+    justifyContent: 'space-between',
+  },
+  languageButton: {
+    flex: 1,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: Colors.border,
     justifyContent: 'center',
-    marginTop: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
   },
-  testModeToggleActive: {
-    backgroundColor: '#FFF3CD',
-    borderWidth: 1,
-    borderColor: '#FFC107',
+  languageButtonActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
-  testModeToggleText: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-    marginLeft: 8,
+  languageText: {
+    fontSize: Typography.fontSizes.md,
+    fontWeight: Typography.fontWeights.semibold,
+    color: Colors.primary,
   },
-  testModeToggleTextActive: {
-    color: '#856404',
+  languageTextActive: {
+    color: Colors.textWhite,
   },
 });

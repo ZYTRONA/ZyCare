@@ -18,7 +18,6 @@ export default function PatientHome({ navigation }) {
           text: 'Logout', 
           onPress: () => {
             logout();
-            navigation.replace('Login');
           }
         }
       ]

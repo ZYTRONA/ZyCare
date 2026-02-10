@@ -40,3 +40,9 @@ export const useChatStore = create((set) => ({
   })),
   clearMessages: () => set({ messages: [] }),
 }));
+
+export const useLanguageStore = create((set, get) => ({
+  language: 'en',
+  setLanguage: (language) => set({ language }),
+  getLanguage: () => get().language,
+}));

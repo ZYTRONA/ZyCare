@@ -35,7 +35,8 @@ export default function RegisterScreen() {
     // TODO: Implement actual registration
     setTimeout(() => {
       setIsLoading(false);
-      navigation.navigate('MainTabs');
+      // After successful registration, navigate to Login for user to authenticate
+      navigation.navigate('Login');
     }, 1500);
   };
 

@@ -54,7 +54,6 @@ export default function DoctorDashboard({ navigation }) {
           onPress: () => {
             if (socket) socket.disconnect();
             logout();
-            navigation.replace('Login');
           }
         }
       ]

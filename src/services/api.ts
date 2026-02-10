@@ -1,28 +1,114 @@
 import { Doctor, Appointment, AISymptomAnalysis, User, Symptom } from '../types';
 
-// Base API URL - would be environment variable in production
-const API_BASE_URL = 'https://api.telemed-ai.com/v1';
+// Real Backend API URL
+const API_BASE_URL = 'http://192.168.137.193:5000/api';
+const API_TIMEOUT = 5000; // 5 seconds timeout
 
-// Mock delay to simulate network requests
-const mockDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// Check if API is reachable
+let apiIsReachable = true;
+
+export const checkAPIConnectivity = async (): Promise<boolean> => {
+  try {
+    const baseUrl = API_BASE_URL.replace('/api', '');
+    const response = await Promise.race([
+      fetch(baseUrl, { method: 'HEAD' }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+    ]);
+    apiIsReachable = true;
+    console.log('✅ API is reachable');
+    return true;
+  } catch (error) {
+    apiIsReachable = false;
+    console.error('❌ API is NOT reachable:', error);
+    return false;
+  }
+};
+
+// Fetch helper function with timeout
+const fetchWithTimeout = (url: string, options?: any, timeout: number = API_TIMEOUT): Promise<Response> => {
+  return Promise.race([
+    fetch(url, options),
+    new Promise<Response>((_, reject) =>
+      setTimeout(() => reject(new Error('API request timeout')), timeout)
+    ),
+  ]) as Promise<Response>;
+};
+
+// Fetch helper function for real API calls with better error handling
+const fetchAPI = async (endpoint: string, options?: any) => {
+  const url = `${API_BASE_URL}${endpoint}`;
+  console.log('🌐 API Request:', url, options?.body ? JSON.parse(options.body) : '');
+  
+  try {
+    const response = await fetchWithTimeout(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+      ...options,
+    });
+    
+    console.log('📊 API Response Status:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ API Error Response:', errorText);
+      throw new Error(`API Error ${response.status}: ${response.statusText} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    console.log('✅ API Response Data:', url, data);
+    return data;
+  } catch (error: any) {
+    const errorMessage = error?.message || String(error);
+    console.error('❌ API Fetch Error:', {
+      endpoint,
+      error: errorMessage,
+      url,
+      timestamp: new Date().toISOString(),
+    });
+    throw error;
+  }
+};
 
 /**
- * Authentication API
+ * Authentication API - Email Based OTP
  */
 export const authAPI = {
-  async login(email: string, password: string): Promise<{ user: User; token: string }> {
-    await mockDelay(1000);
-    // Mock response
-    return {
-      user: {
-        id: 'user_123',
-        email,
-        name: 'John Doe',
-        role: 'patient',
-        phone: '+1 234 567 8900',
-      },
-      token: 'mock_jwt_token_xyz',
-    };
+  async login(email: string, name: string, role: 'patient' | 'doctor' = 'patient'): Promise<{ success: boolean; message: string; userId: string; role: string; name: string }> {
+    try {
+      return await fetchAPI('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, name, role }),
+      });
+    } catch (error) {
+      console.error('❌ Error logging in:', error);
+      throw error;
+    }
+  },
+
+  async verifyOTP(email: string, otp: string): Promise<{ success: boolean; verified?: boolean; message?: string; user?: User }> {
+    try {
+      return await fetchAPI('/auth/verify-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp }),
+      });
+    } catch (error) {
+      console.error('❌ Error verifying OTP:', error);
+      throw error;
+    }
+  },
+
+  async resendOTP(email: string): Promise<{ success: boolean; message: string }> {
+    try {
+      return await fetchAPI('/auth/resend-otp', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+    } catch (error) {
+      console.error('❌ Error resending OTP:', error);
+      throw error;
+    }
   },
 
   async register(userData: {
@@ -32,93 +118,123 @@ export const authAPI = {
     phone: string;
     role: 'patient' | 'doctor';
   }): Promise<{ user: User; token: string }> {
-    await mockDelay(1500);
-    return {
-      user: {
-        id: 'user_' + Date.now(),
-        ...userData,
-      },
-      token: 'mock_jwt_token_xyz',
-    };
+    try {
+      return await fetchAPI('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(userData),
+      });
+    } catch (error) {
+      console.error('❌ Error registering user:', error);
+      throw error;
+    }
   },
 
   async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
-    await mockDelay(1000);
-    return {
-      success: true,
-      message: 'Password reset email sent successfully',
-    };
+    try {
+      return await fetchAPI('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+    } catch (error) {
+      console.error('❌ Error resetting password:', error);
+      throw error;
+    }
   },
 
   async logout(): Promise<void> {
-    await mockDelay(500);
-    // Clear stored tokens
+    try {
+      return await fetchAPI('/auth/logout', {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('❌ Error logging out:', error);
+      throw error;
+    }
   },
 };
 
 /**
- * Doctors API
+ * Doctors API - Real Backend Integration Only
  */
 export const doctorsAPI = {
-  async getDoctors(params?: {
-    specialty?: string;
-    search?: string;
-    page?: number;
-    limit?: number;
-  }): Promise<{ doctors: Doctor[]; total: number }> {
-    await mockDelay(800);
-    // Mock response - would fetch from actual API
-    return {
-      doctors: [],
-      total: 0,
-    };
+  async getAll(): Promise<Doctor[]> {
+    try {
+      return await fetchAPI('/doctors');
+    } catch (error) {
+      console.error('❌ Error fetching doctors from API, returning fallback data:', error);
+      // Return empty array instead of crashing
+      return [];
+    }
   },
 
-  async getDoctorById(doctorId: string): Promise<Doctor> {
-    await mockDelay(500);
-    // Mock response
-    return {
-      id: doctorId,
-      name: 'Dr. Sarah Johnson',
-      email: 'sarah@telemed.com',
-      role: 'doctor',
-      specialty: 'General Physician',
-      qualifications: ['MBBS', 'MD'],
-      experience: 12,
-      rating: 4.8,
-      consultationFee: 50,
-      bio: 'Experienced general physician with expertise in preventive care.',
-    };
+  async getById(doctorId: string): Promise<Doctor> {
+    try {
+      return await fetchAPI(`/doctors/${doctorId}`);
+    } catch (error) {
+      console.error('❌ Error fetching doctor by ID:', error);
+      throw error;
+    }
+  },
+
+  async getBySpecialty(specialty: string): Promise<Doctor[]> {
+    try {
+      return await fetchAPI(`/doctors/specialty/${specialty}`);
+    } catch (error) {
+      console.error('❌ Error fetching doctors by specialty:', error);
+      return [];
+    }
   },
 
   async getAvailableSlots(doctorId: string, date: string): Promise<string[]> {
-    await mockDelay(600);
-    return ['9:00 AM', '10:00 AM', '11:00 AM', '2:00 PM', '3:00 PM', '4:00 PM'];
+    try {
+      return await fetchAPI(`/doctors/${doctorId}/slots?date=${date}`);
+    } catch (error) {
+      console.error('❌ Error fetching available slots:', error);
+      return [];
+    }
   },
 };
 
 /**
- * Appointments API
+ * Appointments API - Real Backend Integration Only
  */
 export const appointmentsAPI = {
-  async getAppointments(status?: 'scheduled' | 'completed' | 'cancelled'): Promise<Appointment[]> {
-    await mockDelay(700);
-    return [];
+  async getUpcoming(userId: string): Promise<Appointment[]> {
+    try {
+      return await fetchAPI(`/appointments/upcoming/${userId}`);
+    } catch (error) {
+      console.error('❌ Error fetching upcoming appointments:', error);
+      return [];
+    }
   },
 
-  async getAppointmentById(appointmentId: string): Promise<Appointment> {
-    await mockDelay(500);
-    return {
-      id: appointmentId,
-      patientId: 'patient_1',
-      doctorId: 'doctor_1',
-      doctorName: 'Dr. Sarah Johnson',
-      doctorSpecialty: 'General Physician',
-      date: '2026-02-10',
-      time: '10:00 AM',
-      status: 'scheduled',
-      type: 'video',
-    };
+  async getAll(userId: string): Promise<Appointment[]> {
+    try {
+      return await fetchAPI(`/appointments/${userId}`);
+    } catch (error) {
+      console.error('❌ Error fetching all appointments:', error);
+      return [];
+    }
+  },
+
+  async getById(appointmentId: string): Promise<Appointment> {
+    try {
+      return await fetchAPI(`/appointments/${appointmentId}`);
+    } catch (error) {
+      console.error('❌ Error fetching appointment by ID:', error);
+      throw error;
+    }
+  },
+
+  async cancel(appointmentId: string): Promise<{ success: boolean }> {
+    try {
+      return await fetchAPI(`/appointments/${appointmentId}/cancel`, {
+        method: 'PATCH',
+      });
+    } catch (error) {
+      console.error('❌ Error canceling appointment:', error);
+      throw error;
+    }
   },
 
   async createAppointment(data: {
@@ -128,24 +244,15 @@ export const appointmentsAPI = {
     type: 'video' | 'audio' | 'chat';
     symptoms?: string;
   }): Promise<Appointment> {
-    await mockDelay(1200);
-    return {
-      id: 'apt_' + Date.now(),
-      patientId: 'patient_1',
-      doctorId: data.doctorId,
-      doctorName: 'Dr. Sarah Johnson',
-      doctorSpecialty: 'General Physician',
-      date: data.date,
-      time: data.time,
-      status: 'scheduled',
-      type: data.type,
-      symptoms: data.symptoms,
-    };
-  },
-
-  async cancelAppointment(appointmentId: string): Promise<{ success: boolean }> {
-    await mockDelay(800);
-    return { success: true };
+    try {
+      return await fetchAPI('/appointments', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('❌ Error creating appointment:', error);
+      throw error;
+    }
   },
 
   async rescheduleAppointment(
@@ -153,23 +260,20 @@ export const appointmentsAPI = {
     newDate: string,
     newTime: string
   ): Promise<Appointment> {
-    await mockDelay(1000);
-    return {
-      id: appointmentId,
-      patientId: 'patient_1',
-      doctorId: 'doctor_1',
-      doctorName: 'Dr. Sarah Johnson',
-      doctorSpecialty: 'General Physician',
-      date: newDate,
-      time: newTime,
-      status: 'scheduled',
-      type: 'video',
-    };
+    try {
+      return await fetchAPI(`/appointments/${appointmentId}/reschedule`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newDate, newTime }),
+      });
+    } catch (error) {
+      console.error('❌ Error rescheduling appointment:', error);
+      throw error;
+    }
   },
 };
 
 /**
- * AI Symptom Checker API
+ * AI Symptom Checker API - Real Backend Integration
  */
 export const symptomCheckerAPI = {
   async analyzeSymptoms(data: {
@@ -179,42 +283,15 @@ export const symptomCheckerAPI = {
     patientAge?: number;
     patientGender?: string;
   }): Promise<AISymptomAnalysis> {
-    await mockDelay(3000);
-    
-    // In production, this would call an AI/ML service
-    return {
-      symptoms: data.symptoms.map((symptom) => ({
-        id: symptom,
-        name: symptom,
-        severity: 'moderate',
-        duration: data.duration,
-      })),
-      possibleConditions: [
-        {
-          name: 'Common Cold',
-          probability: 75,
-          description: 'A viral infection affecting the upper respiratory tract.',
-        },
-        {
-          name: 'Seasonal Flu',
-          probability: 45,
-          description: 'An infection caused by influenza viruses.',
-        },
-        {
-          name: 'Allergic Reaction',
-          probability: 30,
-          description: 'An immune response to environmental allergens.',
-        },
-      ],
-      urgencyLevel: 'medium',
-      recommendations: [
-        'Rest and stay hydrated',
-        'Monitor symptoms for 24-48 hours',
-        'Take over-the-counter medication for relief',
-        'Consult a doctor if symptoms worsen',
-      ],
-      suggestedSpecialties: ['General Physician', 'ENT Specialist'],
-    };
+    try {
+      return await fetchAPI('/symptom-checker/analyze', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('❌ Error analyzing symptoms:', error);
+      throw error;
+    }
   },
 
   async analyzeWithImage(data: {
@@ -223,38 +300,51 @@ export const symptomCheckerAPI = {
     additionalInfo?: string;
     imageUri?: string | null;
   }): Promise<AISymptomAnalysis> {
-    // This is a TypeScript definition that matches the JavaScript implementation
-    // The actual implementation is in api.js which is imported at runtime
-    throw new Error('This method should be imported from api.js');
+    try {
+      return await fetchAPI('/symptom-checker/analyze-with-image', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('❌ Error analyzing symptoms with image:', error);
+      throw error;
+    }
   },
 };
 
 /**
- * Video Call API
+ * Video Call API - Real Backend Integration
  */
 export const videoCallAPI = {
   async initializeCall(appointmentId: string): Promise<{
     roomId: string;
     token: string;
   }> {
-    await mockDelay(1000);
-    return {
-      roomId: 'room_' + appointmentId,
-      token: 'video_token_xyz',
-    };
+    try {
+      return await fetchAPI('/video-calls/initialize', {
+        method: 'POST',
+        body: JSON.stringify({ appointmentId }),
+      });
+    } catch (error) {
+      console.error('❌ Error initializing video call:', error);
+      throw error;
+    }
   },
 
   async endCall(roomId: string): Promise<{ success: boolean; duration: number }> {
-    await mockDelay(500);
-    return {
-      success: true,
-      duration: 1800, // 30 minutes in seconds
-    };
+    try {
+      return await fetchAPI(`/video-calls/${roomId}/end`, {
+        method: 'POST',
+      });
+    } catch (error) {
+      console.error('❌ Error ending video call:', error);
+      throw error;
+    }
   },
 };
 
 /**
- * Chat API
+ * Chat API - Real Backend Integration
  */
 export const chatAPI = {
   async getMessages(appointmentId: string): Promise<{
@@ -265,46 +355,53 @@ export const chatAPI = {
       timestamp: string;
     }>;
   }> {
-    await mockDelay(600);
-    return { messages: [] };
+    try {
+      return await fetchAPI(`/chat/appointments/${appointmentId}/messages`);
+    } catch (error) {
+      console.error('❌ Error fetching messages:', error);
+      return { messages: [] };
+    }
   },
 
   async sendMessage(
     appointmentId: string,
     message: string
   ): Promise<{ messageId: string; timestamp: string }> {
-    await mockDelay(300);
-    return {
-      messageId: 'msg_' + Date.now(),
-      timestamp: new Date().toISOString(),
-    };
+    try {
+      return await fetchAPI(`/chat/appointments/${appointmentId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      });
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      throw error;
+    }
   },
 };
 
 /**
- * User Profile API
+ * User Profile API - Real Backend Integration
  */
 export const userAPI = {
   async getProfile(): Promise<User> {
-    await mockDelay(500);
-    return {
-      id: 'user_123',
-      email: 'john@email.com',
-      name: 'John Doe',
-      role: 'patient',
-      phone: '+1 234 567 8900',
-    };
+    try {
+      return await fetchAPI('/users/profile');
+    } catch (error) {
+      console.error('❌ Error fetching user profile:', error);
+      throw error;
+    }
   },
 
   async updateProfile(data: Partial<User>): Promise<User> {
-    await mockDelay(800);
-    return {
-      id: 'user_123',
-      email: data.email || 'john@email.com',
-      name: data.name || 'John Doe',
-      role: 'patient',
-      phone: data.phone || '+1 234 567 8900',
-    };
+    try {
+      return await fetchAPI('/users/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.error('❌ Error updating user profile:', error);
+      throw error;
+    }
   },
 
   async getMedicalRecords(): Promise<Array<{
@@ -313,8 +410,12 @@ export const userAPI = {
     diagnosis: string;
     doctorName: string;
   }>> {
-    await mockDelay(700);
-    return [];
+    try {
+      return await fetchAPI('/users/medical-records');
+    } catch (error) {
+      console.error('❌ Error fetching medical records:', error);
+      return [];
+    }
   },
 };
 

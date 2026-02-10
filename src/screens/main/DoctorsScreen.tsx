@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   FlatList,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,91 +17,48 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows, MEDICAL_SPECIALTIES } from '../../constants/theme';
 import { RootStackParamList, Doctor } from '../../types';
+import { doctorsAPI } from '../../services/api';
+import { useLanguageStore } from '../../store';
+import { t, LanguageCode } from '../../languages';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type DoctorsScreenRouteProp = RouteProp<RootStackParamList, 'Doctors'>;
 
-// Mock data
-const DOCTORS: Doctor[] = [
-  {
-    id: '1',
-    name: 'Dr. Sarah Johnson',
-    email: 'sarah@telemed.com',
-    role: 'doctor',
-    specialty: 'General Physician',
-    qualifications: ['MBBS', 'MD'],
-    experience: 12,
-    rating: 4.8,
-    consultationFee: 50,
-    bio: 'Experienced general physician with expertise in preventive care and chronic disease management.',
-  },
-  {
-    id: '2',
-    name: 'Dr. Michael Chen',
-    email: 'michael@telemed.com',
-    role: 'doctor',
-    specialty: 'Cardiologist',
-    qualifications: ['MBBS', 'DM Cardiology'],
-    experience: 15,
-    rating: 4.9,
-    consultationFee: 80,
-    bio: 'Renowned cardiologist specializing in heart diseases and interventional cardiology.',
-  },
-  {
-    id: '3',
-    name: 'Dr. Emily Davis',
-    email: 'emily@telemed.com',
-    role: 'doctor',
-    specialty: 'Dermatologist',
-    qualifications: ['MBBS', 'MD Dermatology'],
-    experience: 8,
-    rating: 4.7,
-    consultationFee: 60,
-    bio: 'Skin care specialist with expertise in cosmetic and medical dermatology.',
-  },
-  {
-    id: '4',
-    name: 'Dr. Robert Wilson',
-    email: 'robert@telemed.com',
-    role: 'doctor',
-    specialty: 'Pediatrician',
-    qualifications: ['MBBS', 'MD Pediatrics'],
-    experience: 10,
-    rating: 4.8,
-    consultationFee: 55,
-    bio: 'Dedicated pediatrician caring for children from newborns to adolescents.',
-  },
-  {
-    id: '5',
-    name: 'Dr. Lisa Anderson',
-    email: 'lisa@telemed.com',
-    role: 'doctor',
-    specialty: 'Psychiatrist',
-    qualifications: ['MBBS', 'MD Psychiatry'],
-    experience: 14,
-    rating: 4.9,
-    consultationFee: 90,
-    bio: 'Mental health expert specializing in anxiety, depression, and mood disorders.',
-  },
-  {
-    id: '6',
-    name: 'Dr. James Taylor',
-    email: 'james@telemed.com',
-    role: 'doctor',
-    specialty: 'Orthopedic',
-    qualifications: ['MBBS', 'MS Orthopedics'],
-    experience: 18,
-    rating: 4.7,
-    consultationFee: 75,
-    bio: 'Expert in bone and joint disorders, sports injuries, and orthopedic surgery.',
-  },
-];
-
 export default function DoctorsScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<DoctorsScreenRouteProp>();
+  const language = useLanguageStore((state: any) => state.language) as LanguageCode;
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch doctors from API
+  useEffect(() => {
+    const fetchDoctors = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        console.log('📡 Fetching doctors from API...');
+        const response = await doctorsAPI.getAll();
+        console.log('✅ Doctors fetched:', response);
+        
+        // Handle both array and object response
+        const doctorsList = Array.isArray(response) ? response : response.data || response.doctors || [];
+        setDoctors(doctorsList);
+      } catch (err: any) {
+        console.error('❌ Error fetching doctors:', err);
+        // Silently fail and use fallback - the API will have already tried fallback
+        // Only set error state if truly critical
+        setError(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDoctors();
+  }, []);
 
   // Set initial specialty filter from navigation params
   useEffect(() => {
@@ -108,7 +67,7 @@ export default function DoctorsScreen() {
     }
   }, [route.params?.filterSpecialty]);
 
-  const filteredDoctors = DOCTORS.filter((doctor) => {
+  const filteredDoctors = doctors.filter((doctor) => {
     const matchesSearch = doctor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       doctor.specialty.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSpecialty = !selectedSpecialty || doctor.specialty === selectedSpecialty;
@@ -174,51 +133,61 @@ export default function DoctorsScreen() {
         <Text style={styles.headerTitle}>Find Doctors</Text>
       </View>
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search-outline" size={20} color={Colors.textSecondary} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search by name or specialty..."
-          placeholderTextColor={Colors.textLight}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={20} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Specialty Filter */}
-      <FlatList
-        horizontal
-        data={MEDICAL_SPECIALTIES}
-        renderItem={renderSpecialty}
-        keyExtractor={(item) => item}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.specialtyList}
-        style={styles.specialtyContainer}
-      />
-
-      {/* Doctors List */}
-      <FlatList
-        data={filteredDoctors}
-        renderItem={renderDoctor}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.doctorsList}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="medical-outline" size={64} color={Colors.textLight} />
-            <Text style={styles.emptyStateText}>No doctors found</Text>
-            <Text style={styles.emptyStateSubtext}>
-              Try adjusting your search or filters
-            </Text>
+      {/* Loading State */}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>Loading doctors...</Text>
+        </View>
+      ) : (
+        <>
+          {/* Search Bar */}
+          <View style={styles.searchContainer}>
+            <Ionicons name="search-outline" size={20} color={Colors.textSecondary} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={t(language, 'home.searchPlaceholder', 'Search doctors, symptoms...')}
+              placeholderTextColor={Colors.textLight}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={20} color={Colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </View>
-        }
-      />
+
+          {/* Specialty Filter */}
+          <FlatList
+            horizontal
+            data={MEDICAL_SPECIALTIES}
+            renderItem={renderSpecialty}
+            keyExtractor={(item) => item}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.specialtyList}
+            style={styles.specialtyContainer}
+          />
+
+          {/* Doctors List */}
+          <FlatList
+            data={filteredDoctors}
+            renderItem={renderDoctor}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.doctorsList}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Ionicons name="medical-outline" size={64} color={Colors.textLight} />
+                <Text style={styles.emptyStateText}>{t(language, 'doctors.noDoctorsFound', 'No doctors found')}</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  {t(language, 'doctors.adjustSearch', 'Try adjusting your search or filters')}
+                </Text>
+              </View>
+            }
+          />
+        </>
+      )}
     </SafeAreaView>
   );
 }
@@ -227,6 +196,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  loadingText: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.textSecondary,
+    marginTop: Spacing.md,
   },
   header: {
     paddingHorizontal: Spacing.xl,

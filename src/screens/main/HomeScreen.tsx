@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,119 +16,88 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows } from '../../constants/theme';
 import { RootStackParamList, Doctor, Appointment } from '../../types';
-import { useAuthStore } from '../../store';
+import { useAuthStore, useLanguageStore } from '../../store';
+import { appointmentsAPI } from '../../services/api';
+import { t, LanguageCode } from '../../languages';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// Mock data for demonstration
-const UPCOMING_APPOINTMENT: Appointment = {
-  id: '1',
-  patientId: 'p1',
-  doctorId: 'd1',
-  doctorName: 'Dr. Sarah Johnson',
-  doctorSpecialty: 'General Physician',
-  date: '2026-02-10',
-  time: '10:00 AM',
-  status: 'scheduled',
-  type: 'video',
-};
-
-const TOP_DOCTORS: Doctor[] = [
-  {
-    id: '1',
-    name: 'Dr. Sarah Johnson',
-    email: 'sarah@telemed.com',
-    role: 'doctor',
-    specialty: 'General Physician',
-    qualifications: ['MBBS', 'MD'],
-    experience: 12,
-    rating: 4.8,
-    consultationFee: 500,
-    bio: 'Experienced general physician with expertise in preventive care.',
-  },
-  {
-    id: '2',
-    name: 'Dr. Michael Chen',
-    email: 'michael@telemed.com',
-    role: 'doctor',
-    specialty: 'Cardiologist',
-    qualifications: ['MBBS', 'DM Cardiology'],
-    experience: 15,
-    rating: 4.9,
-    consultationFee: 1200,
-    bio: 'Renowned cardiologist specializing in heart diseases.',
-  },
-  {
-    id: '3',
-    name: 'Dr. Emily Davis',
-    email: 'emily@telemed.com',
-    role: 'doctor',
-    specialty: 'Dermatologist',
-    qualifications: ['MBBS', 'MD Dermatology'],
-    experience: 8,
-    rating: 4.7,
-    consultationFee: 800,
-    bio: 'Skin care specialist with expertise in cosmetic dermatology.',
-  },
-];
-
 const QUICK_SERVICES = [
-  { id: '1', name: 'AI Symptom\nChecker', icon: 'analytics', color: Colors.primary, route: 'SymptomChecker' },
-  { id: '2', name: 'AI Nurse\nChat', icon: 'chatbubbles', color: '#10B981', route: 'Chat' },
-  { id: '3', name: 'Find\nDoctors', icon: 'medical', color: Colors.secondary, route: 'Doctors' },
-  { id: '4', name: 'Book\nAppointment', icon: 'calendar', color: Colors.accent, route: 'Doctors' },
-  { id: '5', name: 'Video\nCall', icon: 'videocam', color: '#8B5CF6', route: 'VideoCall' },
-  { id: '6', name: 'Medical\nRecords', icon: 'document-text', color: Colors.info, route: 'MedicalRecords' },
+  { id: '1', name: 'home.aiSymptomChecker', icon: 'analytics', color: Colors.primary, route: 'SymptomChecker' },
+  { id: '2', name: 'home.aiNurseChat', icon: 'chatbubbles', color: '#10B981', route: 'Chat' },
+  { id: '3', name: 'home.findDoctors', icon: 'medical', color: Colors.secondary, route: 'Doctors' },
+  { id: '4', name: 'home.bookAppointment', icon: 'calendar', color: Colors.accent, route: 'Doctors' },
+  { id: '5', name: 'home.videoCall', icon: 'videocam', color: '#8B5CF6', route: 'VideoCall' },
+  { id: '6', name: 'home.medicalRecords', icon: 'document-text', color: Colors.info, route: 'MedicalRecords' },
 ];
 
 export default function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const user = useAuthStore((state: any) => state.user);
+  const language = useLanguageStore((state: any) => state.language);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
+  const [isLoadingAppointments, setIsLoadingAppointments] = useState(true);
+  const [appointmentError, setAppointmentError] = useState<string | null>(null);
 
-  const renderQuickService = ({ item }: { item: typeof QUICK_SERVICES[0] }) => (
+  // Fetch upcoming appointments
+  useEffect(() => {
+    const fetchUpcomingAppointments = async () => {
+      setIsLoadingAppointments(true);
+      setAppointmentError(null);
+      
+      if (!user?.id) {
+        console.log('⚠️ No user ID available. User object:', user);
+        setIsLoadingAppointments(false);
+        return;
+      }
+      
+      try {
+        console.log('📅 Fetching upcoming appointments for user:', user.id);
+        const response = await appointmentsAPI.getUpcoming(user.id);
+        console.log('✅ Appointments fetched:', response);
+        
+        // Response is already an array of appointments
+        setUpcomingAppointments(response);
+      } catch (err: any) {
+        console.error('❌ Error fetching appointments:', err);
+        // API will have tried fallback - silently handle
+        setAppointmentError(null);
+        setUpcomingAppointments([]);
+      } finally {
+        setIsLoadingAppointments(false);
+      }
+    };
+
+    fetchUpcomingAppointments();
+  }, [user?.id]);
+
+  const upcomingAppointment = upcomingAppointments[0]; // Get first upcoming appointment
+
+  const handleServicePress = useCallback((route: string) => {
+    if (route === 'SymptomChecker') {
+      navigation.navigate('SymptomChecker');
+    } else if (route === 'Chat') {
+      navigation.navigate('Chat');
+    } else if (route === 'VideoCall') {
+      navigation.navigate('VideoCall', {});
+    } else if (route === 'MedicalRecords') {
+      navigation.navigate('MedicalRecords');
+    } else if (route === 'Doctors') {
+      navigation.navigate('MainTabs', { screen: 'Doctors' });
+    }
+  }, [navigation]);
+
+  const renderQuickService = useCallback(({ item }: { item: typeof QUICK_SERVICES[0] }) => (
     <TouchableOpacity
       style={styles.serviceCard}
-      onPress={() => {
-        if (item.route === 'SymptomChecker') {
-          navigation.navigate('SymptomChecker');
-        } else if (item.route === 'Chat') {
-          navigation.navigate('Chat');
-        } else if (item.route === 'VideoCall') {
-          navigation.navigate('VideoCall');
-        } else if (item.route === 'Doctors') {
-          navigation.navigate('MainTabs', { screen: 'Doctors' });
-        }
-      }}
+      onPress={() => handleServicePress(item.route)}
     >
       <View style={[styles.serviceIconContainer, { backgroundColor: item.color + '20' }]}>
         <Ionicons name={item.icon as any} size={28} color={item.color} />
       </View>
-      <Text style={styles.serviceName}>{item.name}</Text>
+      <Text style={styles.serviceName}>{t(language as LanguageCode, item.name)}</Text>
     </TouchableOpacity>
-  );
-
-  const renderDoctor = ({ item }: { item: Doctor }) => (
-    <TouchableOpacity
-      style={styles.doctorCard}
-      onPress={() => navigation.navigate('DoctorProfile', { doctorId: item.id })}
-    >
-      <View style={styles.doctorAvatar}>
-        <Ionicons name="person" size={32} color={Colors.primary} />
-      </View>
-      <View style={styles.doctorInfo}>
-        <Text style={styles.doctorName}>{item.name}</Text>
-        <Text style={styles.doctorSpecialty}>{item.specialty}</Text>
-        <View style={styles.doctorMeta}>
-          <View style={styles.ratingContainer}>
-            <Ionicons name="star" size={14} color={Colors.accent} />
-            <Text style={styles.ratingText}>{item.rating}</Text>
-          </View>
-          <Text style={styles.experienceText}>{item.experience} yrs exp</Text>
-        </View>
-      </View>
-      <Text style={styles.doctorFee}>₹{item.consultationFee}</Text>
-    </TouchableOpacity>
-  );
+  ), [language, handleServicePress]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -134,19 +105,27 @@ export default function HomeScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.greeting}>Hello,</Text>
+            <Text style={styles.greeting}>{t(language as LanguageCode, 'home.hello')}</Text>
             <Text style={styles.username}>{user?.name || 'Guest'}</Text>
           </View>
-          <TouchableOpacity style={styles.notificationButton}>
-            <Ionicons name="notifications-outline" size={24} color={Colors.textPrimary} />
-            <View style={styles.notificationBadge} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity 
+              style={styles.languageButton}
+              onPress={useCallback(() => navigation.navigate('LanguageSelection'), [navigation])}
+            >
+              <Ionicons name="globe-outline" size={20} color={Colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.notificationButton}>
+              <Ionicons name="notifications-outline" size={24} color={Colors.textPrimary} />
+              <View style={styles.notificationBadge} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search Bar */}
         <TouchableOpacity style={styles.searchBar}>
           <Ionicons name="search-outline" size={20} color={Colors.textSecondary} />
-          <Text style={styles.searchPlaceholder}>Search doctors, symptoms...</Text>
+          <Text style={styles.searchPlaceholder}>{t(language as LanguageCode, 'home.searchPlaceholder')}</Text>
         </TouchableOpacity>
 
         {/* AI Health Banner */}
@@ -159,9 +138,9 @@ export default function HomeScreen() {
               <Ionicons name="sparkles" size={28} color={Colors.textWhite} />
             </View>
             <View style={styles.aiBannerText}>
-              <Text style={styles.aiBannerTitle}>AI Health Assistant</Text>
+              <Text style={styles.aiBannerTitle}>{t(language as LanguageCode, 'home.aiHealthAssistant')}</Text>
               <Text style={styles.aiBannerSubtitle}>
-                Describe your symptoms and get instant AI-powered health insights
+                {t(language as LanguageCode, 'home.aiHealthDescription')}
               </Text>
             </View>
           </View>
@@ -170,7 +149,7 @@ export default function HomeScreen() {
 
         {/* Quick Services */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Services</Text>
+          <Text style={styles.sectionTitle}>{t(language as LanguageCode, 'home.quickServices')}</Text>
           <FlatList
             horizontal
             data={QUICK_SERVICES}
@@ -184,68 +163,91 @@ export default function HomeScreen() {
         {/* Upcoming Appointment */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Upcoming Appointment</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See All</Text>
+            <Text style={styles.sectionTitle}>{t(language as LanguageCode, 'appointments.upcomingAppointment')}</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('MainTabs', { screen: 'Appointments' })}>
+              <Text style={styles.seeAllText}>{t(language as LanguageCode, 'common.seeAll')}</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.appointmentCard}>
-            <View style={styles.appointmentHeader}>
-              <View style={styles.doctorAvatar}>
-                <Ionicons name="person" size={24} color={Colors.primary} />
-              </View>
-              <View style={styles.appointmentInfo}>
-                <Text style={styles.appointmentDoctorName}>
-                  {UPCOMING_APPOINTMENT.doctorName}
-                </Text>
-                <Text style={styles.appointmentDoctorSpecialty}>
-                  {UPCOMING_APPOINTMENT.doctorSpecialty}
-                </Text>
-              </View>
-              <View style={[styles.appointmentType, { backgroundColor: Colors.primary + '20' }]}>
-                <Ionicons name="videocam" size={16} color={Colors.primary} />
-              </View>
+          
+          {isLoadingAppointments ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={Colors.primary} />
+              <Text style={styles.loadingText}>{t(language as LanguageCode, 'common.loading')}</Text>
             </View>
-            <View style={styles.appointmentDetails}>
-              <View style={styles.appointmentDetailItem}>
-                <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
-                <Text style={styles.appointmentDetailText}>
-                  {UPCOMING_APPOINTMENT.date}
-                </Text>
+          ) : upcomingAppointment ? (
+            <TouchableOpacity style={styles.appointmentCard}>
+              <View style={styles.appointmentHeader}>
+                <View style={styles.doctorAvatar}>
+                  <Ionicons name="person" size={24} color={Colors.primary} />
+                </View>
+                <View style={styles.appointmentInfo}>
+                  <Text style={styles.appointmentDoctorName}>
+                    {upcomingAppointment.doctorName}
+                  </Text>
+                  <Text style={styles.appointmentDoctorSpecialty}>
+                    {upcomingAppointment.doctorSpecialty}
+                  </Text>
+                </View>
+                <View style={[styles.appointmentType, { backgroundColor: Colors.primary + '20' }]}>
+                  <Ionicons name={upcomingAppointment.type === 'video' ? 'videocam' : 'phone-portrait'} size={16} color={Colors.primary} />
+                </View>
               </View>
-              <View style={styles.appointmentDetailItem}>
-                <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
-                <Text style={styles.appointmentDetailText}>
-                  {UPCOMING_APPOINTMENT.time}
-                </Text>
+              <View style={styles.appointmentDetails}>
+                <View style={styles.appointmentDetailItem}>
+                  <Ionicons name="calendar-outline" size={16} color={Colors.textSecondary} />
+                  <Text style={styles.appointmentDetailText}>
+                    {upcomingAppointment.date}
+                  </Text>
+                </View>
+                <View style={styles.appointmentDetailItem}>
+                  <Ionicons name="time-outline" size={16} color={Colors.textSecondary} />
+                  <Text style={styles.appointmentDetailText}>
+                    {upcomingAppointment.time}
+                  </Text>
+                </View>
               </View>
-            </View>
-            <View style={styles.appointmentActions}>
-              <TouchableOpacity style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.joinButton}
-                onPress={() => navigation.navigate('Consultation', { appointmentId: UPCOMING_APPOINTMENT.id })}
+              <View style={styles.appointmentActions}>
+                <TouchableOpacity 
+                  style={styles.cancelButton}
+                  onPress={() => {
+                    Alert.alert(
+                      t(language as LanguageCode, 'appointments.cancelAppointment'),
+                      t(language as LanguageCode, 'appointments.confirmCancel'),
+                      [
+                        { text: t(language as LanguageCode, 'common.no'), style: 'cancel' },
+                        { text: t(language as LanguageCode, 'common.yes'), style: 'destructive', onPress: () => {
+                          // TODO: Call cancel API
+                          Alert.alert(t(language as LanguageCode, 'common.cancelled'), t(language as LanguageCode, 'appointments.cancelledSuccess'));
+                        }}
+                      ]
+                    );
+                  }}
+                >
+                  <Text style={styles.cancelButtonText}>{t(language as LanguageCode, 'common.cancel')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.joinButton}
+                  onPress={() => navigation.navigate('Consultation', { appointmentId: upcomingAppointment.id })}
+                >
+                  <Text style={styles.joinButtonText}>{t(language as LanguageCode, 'appointments.joinCall')}</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.noAppointmentCard}>
+              <Ionicons name="calendar-outline" size={48} color={Colors.textLight} />
+              <Text style={styles.noAppointmentText}>{t(language as LanguageCode, 'appointments.noUpcoming')}</Text>
+              <Text style={styles.noAppointmentSubtext}>{t(language as LanguageCode, 'appointments.noUpcomingDescription')}</Text>
+              <TouchableOpacity 
+                style={styles.bookButton}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'Doctors' })}
               >
-                <Text style={styles.joinButtonText}>Join Call</Text>
+                <Text style={styles.bookButtonText}>{t(language as LanguageCode, 'home.bookAppointment')}</Text>
               </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          )}
         </View>
 
-        {/* Top Doctors */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Top Doctors</Text>
-            <TouchableOpacity>
-              <Text style={styles.seeAllText}>See All</Text>
-            </TouchableOpacity>
-          </View>
-          {TOP_DOCTORS.map((doctor) => (
-            <View key={doctor.id}>{renderDoctor({ item: doctor })}</View>
-          ))}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -263,6 +265,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
     paddingBottom: Spacing.md,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  languageButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.cardBackground,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.small,
   },
   greeting: {
     fontSize: Typography.fontSizes.md,
@@ -521,5 +537,52 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSizes.lg,
     fontWeight: Typography.fontWeights.bold,
     color: Colors.primary,
+  },
+  loadingContainer: {
+    backgroundColor: Colors.cardBackground,
+    marginHorizontal: Spacing.xl,
+    borderRadius: 12,
+    padding: Spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Shadows.small,
+  },
+  loadingText: {
+    fontSize: Typography.fontSizes.sm,
+    color: Colors.textSecondary,
+    marginTop: Spacing.sm,
+  },
+  noAppointmentCard: {
+    backgroundColor: Colors.cardBackground,
+    marginHorizontal: Spacing.xl,
+    borderRadius: 12,
+    padding: Spacing.xl,
+    alignItems: 'center',
+    ...Shadows.small,
+  },
+  noAppointmentText: {
+    fontSize: Typography.fontSizes.lg,
+    fontWeight: Typography.fontWeights.semibold,
+    color: Colors.textPrimary,
+    marginTop: Spacing.md,
+  },
+  noAppointmentSubtext: {
+    fontSize: Typography.fontSizes.sm,
+    color: Colors.textSecondary,
+    marginTop: Spacing.sm,
+    textAlign: 'center',
+  },
+  bookButton: {
+    backgroundColor: Colors.primary,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: 10,
+    marginTop: Spacing.lg,
+    alignItems: 'center',
+  },
+  bookButtonText: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.textWhite,
+    fontWeight: Typography.fontWeights.semibold,
   },
 });

@@ -20,13 +20,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, Shadows, COMMON_SYMPTOMS } from '../constants/theme';
 import { RootStackParamList, Symptom, AISymptomAnalysis, PossibleCondition } from '../types';
 import { symptomCheckerAPI } from '../services/api.js';
-import { useAuthStore } from '../store';
+import { useAuthStore, useLanguageStore } from '../store';
+import { t, LanguageCode } from '../languages';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function SymptomCheckerScreen() {
   const navigation = useNavigation<NavigationProp>();
   const user = useAuthStore((state: any) => state.user);
+  const language = useLanguageStore((state: any) => state.language) as LanguageCode;
   const [step, setStep] = useState<'input' | 'analyzing' | 'results'>('input');
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [additionalInfo, setAdditionalInfo] = useState('');

@@ -14,7 +14,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows } from '../../constants/theme';
 import { RootStackParamList } from '../../types';
-import { useAuthStore } from '../../store';
+import { useAuthStore, useLanguageStore } from '../../store';
+import { t, LanguageCode } from '../../languages';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -29,48 +30,48 @@ const USER = {
   weight: '70 kg',
 };
 
-const MENU_ITEMS = [
+const MENU_ITEMS = (language: LanguageCode) => [
   {
     id: 'personal',
     title: 'Personal Information',
     icon: 'person-outline',
     route: null,
+    description: 'View and edit your personal details',
   },
   {
     id: 'medical',
     title: 'Medical Records',
     icon: 'document-text-outline',
     route: 'MedicalRecords',
-  },
-  {
-    id: 'payment',
-    title: 'Payment Methods',
-    icon: 'card-outline',
-    route: null,
+    description: 'Access your medical history and documents',
   },
   {
     id: 'notifications',
     title: 'Notifications',
     icon: 'notifications-outline',
     route: null,
+    description: 'Manage your notification preferences',
   },
   {
     id: 'privacy',
     title: 'Privacy & Security',
     icon: 'shield-checkmark-outline',
     route: null,
+    description: 'Control your privacy settings',
   },
   {
     id: 'help',
     title: 'Help & Support',
     icon: 'help-circle-outline',
     route: null,
+    description: 'Get help and contact support',
   },
   {
     id: 'about',
     title: 'About',
     icon: 'information-circle-outline',
     route: null,
+    description: 'About ZYCARE and version info',
   },
 ];
 
@@ -78,23 +79,46 @@ export default function ProfileScreen() {
   const navigation = useNavigation<NavigationProp>();
   const user = useAuthStore((state: any) => state.user);
   const logout = useAuthStore((state: any) => state.logout);
+  const language = useLanguageStore((state: any) => state.language) as LanguageCode;
 
   const handleLogout = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      t(language, 'profile.logout', 'Logout'),
+      t(language, 'profile.confirmLogout', 'Are you sure you want to logout?'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t(language, 'common.cancel', 'Cancel'), style: 'cancel' },
         { 
-          text: 'Logout', 
+          text: t(language, 'profile.logout', 'Logout'), 
           style: 'destructive',
           onPress: () => {
             logout();
-            navigation.navigate('Login');
           }
         },
       ]
     );
+  };
+
+  const handleMenuItemPress = (menuId: string) => {
+    switch (menuId) {
+      case 'personal':
+        navigation.navigate('PersonalInformation');
+        break;
+      case 'medical':
+        navigation.navigate('MedicalRecords');
+        break;
+      case 'notifications':
+        navigation.navigate('Notifications');
+        break;
+      case 'privacy':
+        navigation.navigate('PrivacySecurity');
+        break;
+      case 'help':
+        navigation.navigate('HelpSupport');
+        break;
+      case 'about':
+        navigation.navigate('About');
+        break;
+    }
   };
 
   return (
@@ -128,7 +152,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{user?.userId?.slice(0, 8) || 'N/A'}</Text>
+              <Text style={styles.statValue}>{user?.id?.slice(0, 8) || 'N/A'}</Text>
               <Text style={styles.statLabel}>User ID</Text>
             </View>
           </View>
@@ -160,21 +184,25 @@ export default function ProfileScreen() {
 
         {/* Menu Items */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Settings</Text>
+          <Text style={styles.sectionTitle}>{t(language, 'profile.settings', 'Settings')}</Text>
           <View style={styles.menuCard}>
-            {MENU_ITEMS.map((item, index) => (
+            {MENU_ITEMS(language).map((item: any, index: number) => (
               <TouchableOpacity
                 key={item.id}
                 style={[
                   styles.menuItem,
-                  index < MENU_ITEMS.length - 1 && styles.menuItemBorder,
+                  index < MENU_ITEMS(language).length - 1 && styles.menuItemBorder,
                 ]}
+                onPress={() => handleMenuItemPress(item.id)}
               >
                 <View style={styles.menuItemLeft}>
                   <View style={styles.menuIconContainer}>
                     <Ionicons name={item.icon as any} size={22} color={Colors.primary} />
                   </View>
-                  <Text style={styles.menuItemText}>{item.title}</Text>
+                  <View style={styles.menuItemTextContainer}>
+                    <Text style={styles.menuItemText}>{item.title}</Text>
+                    <Text style={styles.menuItemDescription}>{item.description}</Text>
+                  </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={Colors.textSecondary} />
               </TouchableOpacity>
@@ -185,11 +213,11 @@ export default function ProfileScreen() {
         {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={22} color={Colors.error} />
-          <Text style={styles.logoutButtonText}>Logout</Text>
+          <Text style={styles.logoutButtonText}>{t(language, 'profile.logout', 'Logout')}</Text>
         </TouchableOpacity>
 
         {/* App Version */}
-        <Text style={styles.versionText}>TeleMed AI v1.0.0</Text>
+        <Text style={styles.versionText}>ZYCARE v1.0.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -358,6 +386,14 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSizes.md,
     color: Colors.textPrimary,
     fontWeight: Typography.fontWeights.medium,
+  },
+  menuItemTextContainer: {
+    flex: 1,
+  },
+  menuItemDescription: {
+    fontSize: Typography.fontSizes.sm,
+    color: Colors.textSecondary,
+    marginTop: Spacing.xs,
   },
   logoutButton: {
     flexDirection: 'row',

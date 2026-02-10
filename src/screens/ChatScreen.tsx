@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -75,10 +75,15 @@ export default function ChatScreen() {
   }, []);
 
   useEffect(() => {
-    setTimeout(() => {
+    const scrollTimer = setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
+    return () => clearTimeout(scrollTimer);
   }, [messages]);
+
+  const handleContentSizeChange = useCallback(() => {
+    flatListRef.current?.scrollToEnd({ animated: true });
+  }, []);
 
   const sendMessage = async () => {
     if (!inputMessage.trim()) return;
@@ -102,21 +107,29 @@ export default function ChatScreen() {
 
       const response = await aiNurseAPI.sendMessage(inputMessage, history);
 
+      if (!response || !response.reply) {
+        throw new Error('Invalid response from AI Nurse: missing reply');
+      }
+
       const nurseMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: response.reply,
         sender: 'nurse',
         timestamp: new Date(),
-        language: response.language
+        language: response.language || 'en'
       };
 
       setMessages((prev) => [...prev, nurseMessage]);
     } catch (error: any) {
-      console.error('Chat error:', error);
+      console.error('❌ Chat Error:', {
+        message: error?.message,
+        error: error,
+        timestamp: new Date().toISOString(),
+      });
       
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: "I apologize, but I'm having trouble connecting right now. Please try again in a moment, or if this is urgent, please consult with a doctor immediately. 🏥",
+        text: `⚠️ ${error?.message || "I'm having trouble connecting right now. Please try again in a moment, or if this is urgent, please consult with a doctor immediately."} 🏥`,
         sender: 'nurse',
         timestamp: new Date(),
       };
@@ -151,44 +164,62 @@ export default function ChatScreen() {
         
         try {
           // Transcribe audio using Groq Whisper
+          console.log('🎤 Starting transcription for recording:', recordingUri);
           const transcriptionResult = await speechAPI.transcribe(recordingUri);
           
-          if (transcriptionResult.text) {
-            // Send transcribed text as message
-            const userMessage: Message = {
-              id: Date.now().toString(),
-              text: transcriptionResult.text,
-              sender: 'user',
-              timestamp: new Date(),
-            };
+          console.log('✅ Transcription result:', { 
+            textLength: transcriptionResult?.text?.length,
+            language: transcriptionResult?.language 
+          });
 
-            setMessages((prev) => [...prev, userMessage]);
-
-            // Get AI response
-            const history = messages.slice(-6).map(msg => ({
-              role: msg.sender === 'user' ? 'user' : 'assistant',
-              content: msg.text
-            }));
-
-            const response = await aiNurseAPI.sendMessage(transcriptionResult.text, history);
-
-            const nurseMessage: Message = {
-              id: (Date.now() + 1).toString(),
-              text: response.reply,
-              sender: 'nurse',
-              timestamp: new Date(),
-              language: response.language
-            };
-
-            setMessages((prev) => [...prev, nurseMessage]);
-          } else {
-            Alert.alert('No speech detected', 'Please try speaking again.');
+          if (!transcriptionResult || !transcriptionResult.text) {
+            Alert.alert('No speech detected', 'Please try speaking again and make sure your audio is clear.');
+            setIsTyping(false);
+            return;
           }
-        } catch (error) {
-          console.error('Transcription error:', error);
+
+          // Send transcribed text as message
+          const userMessage: Message = {
+            id: Date.now().toString(),
+            text: transcriptionResult.text,
+            sender: 'user',
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, userMessage]);
+
+          // Get AI response
+          const history = messages.slice(-6).map(msg => ({
+            role: msg.sender === 'user' ? 'user' : 'assistant',
+            content: msg.text
+          }));
+
+          console.log('💬 Sending transcribed text to AI Nurse');
+          const response = await aiNurseAPI.sendMessage(transcriptionResult.text, history);
+
+          if (!response || !response.reply) {
+            throw new Error('Invalid response from AI Nurse');
+          }
+
+          const nurseMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            text: response.reply,
+            sender: 'nurse',
+            timestamp: new Date(),
+            language: response.language || transcriptionResult.language || 'en'
+          };
+
+          setMessages((prev) => [...prev, nurseMessage]);
+        } catch (error: any) {
+          console.error('❌ Voice Input Error:', {
+            message: error?.message,
+            error: error,
+            timestamp: new Date().toISOString(),
+          });
+
           Alert.alert(
-            'Transcription Failed',
-            'Could not transcribe your voice. Please try again or type your message.'
+            'Voice Input Error',
+            error?.message || 'Could not process your voice. Please try again or type your message instead.'
           );
         } finally {
           setIsTyping(false);
@@ -280,7 +311,7 @@ export default function ChatScreen() {
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.messagesContainer}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={handleContentSizeChange}
       />
 
       {isTyping && (

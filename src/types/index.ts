@@ -116,10 +116,16 @@ export type RootStackParamList = {
   BookAppointment: { doctorId: string };
   Consultation: { appointmentId: string };
   SymptomChecker: undefined;
+  PersonalInformation: undefined;
   MedicalRecords: undefined;
+  Notifications: undefined;
+  PrivacySecurity: undefined;
+  HelpSupport: undefined;
+  About: undefined;
   Chat: undefined;
   ChatScreen: { appointmentId: string; doctorName: string };
   VideoCall: { roomId?: string; doctorName?: string };
+  LanguageSelection: undefined;
 };
 
 export type MainTabParamList = {

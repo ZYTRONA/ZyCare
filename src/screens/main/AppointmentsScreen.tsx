@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   FlatList,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,82 +15,57 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { Colors, Typography, Spacing, Shadows } from '../../constants/theme';
 import { RootStackParamList, Appointment } from '../../types';
+import { useAuthStore, useLanguageStore } from '../../store';
+import { appointmentsAPI } from '../../services/api';
+import { t, LanguageCode } from '../../languages';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-// Mock data
-const APPOINTMENTS: Appointment[] = [
-  {
-    id: '1',
-    patientId: 'p1',
-    doctorId: 'd1',
-    doctorName: 'Dr. Sarah Johnson',
-    doctorSpecialty: 'General Physician',
-    date: '2026-02-10',
-    time: '10:00 AM',
-    status: 'scheduled',
-    type: 'video',
-  },
-  {
-    id: '2',
-    patientId: 'p1',
-    doctorId: 'd2',
-    doctorName: 'Dr. Michael Chen',
-    doctorSpecialty: 'Cardiologist',
-    date: '2026-02-12',
-    time: '2:30 PM',
-    status: 'scheduled',
-    type: 'audio',
-  },
-  {
-    id: '3',
-    patientId: 'p1',
-    doctorId: 'd3',
-    doctorName: 'Dr. Emily Davis',
-    doctorSpecialty: 'Dermatologist',
-    date: '2026-02-05',
-    time: '11:00 AM',
-    status: 'completed',
-    type: 'video',
-  },
-  {
-    id: '4',
-    patientId: 'p1',
-    doctorId: 'd4',
-    doctorName: 'Dr. Robert Wilson',
-    doctorSpecialty: 'Pediatrician',
-    date: '2026-01-28',
-    time: '9:00 AM',
-    status: 'completed',
-    type: 'chat',
-  },
-  {
-    id: '5',
-    patientId: 'p1',
-    doctorId: 'd5',
-    doctorName: 'Dr. Lisa Anderson',
-    doctorSpecialty: 'Psychiatrist',
-    date: '2026-01-20',
-    time: '4:00 PM',
-    status: 'cancelled',
-    type: 'video',
-  },
-];
-
 type TabType = 'upcoming' | 'completed' | 'cancelled';
 
 export default function AppointmentsScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const user = useAuthStore((state: any) => state.user);
+  const language = useLanguageStore((state: any) => state.language) as LanguageCode;
+  
   const [activeTab, setActiveTab] = useState<TabType>('upcoming');
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch appointments
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      if (!user?.id) return;
+      
+      setIsLoading(true);
+      setError(null);
+      try {
+        console.log('📅 Fetching all appointments for user:', user.id);
+        const response = await appointmentsAPI.getAll(user.id);
+        console.log('✅ Appointments fetched:', response);
+        setAppointments(response);
+      } catch (err: any) {
+        console.error('❌ Error fetching appointments:', err);
+        // API will have tried fallback - silently handle
+        setError(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchAppointments();
+  }, [user?.id]);
 
   const getFilteredAppointments = () => {
+    if (isLoading) return [];
+    
     switch (activeTab) {
       case 'upcoming':
-        return APPOINTMENTS.filter((a) => a.status === 'scheduled' || a.status === 'in-progress');
+        return appointments.filter((a) => a.status === 'scheduled' || a.status === 'in-progress');
       case 'completed':
-        return APPOINTMENTS.filter((a) => a.status === 'completed');
+        return appointments.filter((a) => a.status === 'completed');
       case 'cancelled':
-        return APPOINTMENTS.filter((a) => a.status === 'cancelled');
+        return appointments.filter((a) => a.status === 'cancelled');
       default:
         return [];
     }
@@ -174,7 +151,7 @@ export default function AppointmentsScreen() {
           >
             <Ionicons name={getTypeIcon(item.type) as any} size={18} color={Colors.textWhite} />
             <Text style={styles.joinButtonText}>
-              {item.type === 'chat' ? 'Start Chat' : 'Join Call'}
+              {item.type === 'chat' ? t(language, 'common.startChat', 'Start Chat') : t(language, 'home.joinCall', 'Join Call')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -195,22 +172,20 @@ export default function AppointmentsScreen() {
     </TouchableOpacity>
   );
 
-  const tabs: { key: TabType; label: string }[] = [
-    { key: 'upcoming', label: 'Upcoming' },
-    { key: 'completed', label: 'Completed' },
-    { key: 'cancelled', label: 'Cancelled' },
-  ];
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Appointments</Text>
+        <Text style={styles.headerTitle}>{t(language, 'appointments.myAppointments', 'My Appointments')}</Text>
       </View>
 
       {/* Tabs */}
       <View style={styles.tabContainer}>
-        {tabs.map((tab) => (
+        {[
+          { key: 'upcoming' as TabType, label: t(language, 'appointments.upcoming', 'Upcoming') },
+          { key: 'completed' as TabType, label: t(language, 'appointments.completed', 'Completed') },
+          { key: 'cancelled' as TabType, label: t(language, 'appointments.cancelled', 'Cancelled') },
+        ].map((tab) => (
           <TouchableOpacity
             key={tab.key}
             style={[styles.tab, activeTab === tab.key && styles.tabActive]}
@@ -224,24 +199,45 @@ export default function AppointmentsScreen() {
       </View>
 
       {/* Appointments List */}
-      <FlatList
-        data={getFilteredAppointments()}
-        renderItem={renderAppointment}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={64} color={Colors.textLight} />
-            <Text style={styles.emptyStateText}>No {activeTab} appointments</Text>
-            <Text style={styles.emptyStateSubtext}>
-              {activeTab === 'upcoming'
-                ? 'Book an appointment with a doctor to get started'
-                : 'Your appointments will appear here'}
-            </Text>
-          </View>
-        }
-      />
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>{t(language, 'common.loading', 'Loading')} {activeTab} {t(language, 'appointments.appointments', 'appointments')}...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={64} color={Colors.error} />
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => {
+              setIsLoading(true);
+              setError(null);
+            }}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={getFilteredAppointments()}
+          renderItem={renderAppointment}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Ionicons name="calendar-outline" size={64} color={Colors.textLight} />
+              <Text style={styles.emptyStateText}>{t(language, 'appointments.noAppointments', 'No appointments')}</Text>
+              <Text style={styles.emptyStateSubtext}>
+                {activeTab === 'upcoming'
+                  ? t(language, 'appointments.bookToStart', 'Book an appointment with a doctor to get started')
+                  : t(language, 'appointments.appearsHere', 'Your appointments will appear here')}
+              </Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -445,5 +441,41 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xs,
     textAlign: 'center',
     paddingHorizontal: Spacing.xl,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: Spacing.xxxl,
+  },
+  loadingText: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.textSecondary,
+    marginTop: Spacing.lg,
+  },
+  errorContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.xxxl,
+  },
+  errorText: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.error,
+    marginTop: Spacing.lg,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: 10,
+    backgroundColor: Colors.primary,
+  },
+  retryButtonText: {
+    fontSize: Typography.fontSizes.md,
+    color: Colors.textWhite,
+    fontWeight: Typography.fontWeights.medium,
   },
 });

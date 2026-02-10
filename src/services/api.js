@@ -12,8 +12,8 @@ const getAPIURL = () => {
     return process.env.EXPO_PUBLIC_API_URL;
   }
   
-  // Priority 2: Default to network IP
-  return 'http://10.56.198.1:5000';
+  // Priority 2: Default to correct machine IP where backend is running
+  return 'http://192.168.137.193:5000';
 };
 
 const API_URL = getAPIURL();
@@ -65,16 +65,61 @@ api.interceptors.response.use(
   }
 );
 
-// Auth API
+// Auth API - Email Based OTP
+/**
+ * @typedef {Object} LoginResponse
+ * @property {boolean} success
+ * @property {string} message
+ * @property {string} userId
+ * @property {string} role
+ * @property {string} name
+ */
+
+/**
+ * @typedef {Object} VerifyOTPResponse
+ * @property {boolean} success
+ * @property {boolean} verified
+ * @property {Object} user
+ * @property {string} user.userId
+ * @property {string} user.name
+ * @property {string} user.email
+ * @property {string} user.role
+ */
+
 export const authAPI = {
-  login: async (phone, name, role = 'patient') => {
-    console.log('🔐 authAPI.login called with:', { phone, name, role });
-    const response = await api.post('/api/auth/login', { phone, name, role });
+  /**
+   * Send OTP to email
+   * @param {string} email - User email address
+   * @param {string} name - User full name
+   * @param {string} role - User role (patient or doctor)
+   * @returns {Promise<LoginResponse>}
+   */
+  login: async (email, name, role = 'patient') => {
+    console.log('🔐 authAPI.login called with:', { email, name, role });
+    const response = await api.post('/api/auth/login', { email, name, role });
     return response.data;
   },
-  verifyOTP: async (phone, otp) => {
-    console.log('🔐 authAPI.verifyOTP called with:', { phone, otp });
-    const response = await api.post('/api/auth/verify-otp', { phone, otp });
+
+  /**
+   * Verify OTP code
+   * @param {string} email - User email address
+   * @param {string} otp - 6-digit OTP code
+   * @returns {Promise<VerifyOTPResponse>}
+   */
+  verifyOTP: async (email, otp) => {
+    console.log('🔐 authAPI.verifyOTP called with:', { email, otp });
+    const response = await api.post('/api/auth/verify-otp', { email, otp });
+    return response.data;
+  },
+
+  /**
+   * Resend OTP to email
+   * @param {string} email - User email address
+   * @returns {Promise<{success: boolean, message: string}>}
+   */
+  resendOTP: async (email) => {
+    console.log('🔐 authAPI.resendOTP called with:', { email });
+    const response = await api.post('/api/auth/resend-otp', { email });
     return response.data;
   },
 };
@@ -111,6 +156,88 @@ export const userAPI = {
   },
   update: async (userId, data) => {
     const response = await api.patch(`/api/users/${userId}`, data);
+    return response.data;
+  },
+};
+
+// Doctors API
+export const doctorsAPI = {
+  /**
+   * Get all doctors
+   * @returns {Promise<Array>} List of all doctors
+   */
+  getAll: async () => {
+    console.log('🏥 doctorsAPI.getAll called');
+    const response = await api.get('/api/doctors');
+    return response.data;
+  },
+
+  /**
+   * Get doctor by ID
+   * @param {string} doctorId - Doctor ID
+   * @returns {Promise<Object>} Doctor details
+   */
+  getById: async (doctorId) => {
+    console.log('🏥 doctorsAPI.getById called with:', { doctorId });
+    const response = await api.get(`/api/doctors/${doctorId}`);
+    return response.data;
+  },
+
+  /**
+   * Search doctors by specialty
+   * @param {string} specialty - Medical specialty
+   * @returns {Promise<Array>} List of doctors in that specialty
+   */
+  getBySpecialty: async (specialty) => {
+    console.log('🏥 doctorsAPI.getBySpecialty called with:', { specialty });
+    const response = await api.get(`/api/doctors/specialty/${specialty}`);
+    return response.data;
+  },
+};
+
+// Appointments API
+export const appointmentsAPI = {
+  /**
+   * Get upcoming appointments for user
+   * @param {string} userId - User ID
+   * @returns {Promise<Array>} List of upcoming appointments
+   */
+  getUpcoming: async (userId) => {
+    console.log('📅 appointmentsAPI.getUpcoming called with:', { userId });
+    const response = await api.get(`/api/appointments/upcoming/${userId}`);
+    return response.data;
+  },
+
+  /**
+   * Get all appointments for user
+   * @param {string} userId - User ID
+   * @returns {Promise<Array>} List of all appointments
+   */
+  getAll: async (userId) => {
+    console.log('📅 appointmentsAPI.getAll called with:', { userId });
+    const response = await api.get(`/api/appointments/${userId}`);
+    return response.data;
+  },
+
+  /**
+   * Get appointment by ID
+   * @param {string} appointmentId - Appointment ID
+   * @returns {Promise<Object>} Appointment details
+   */
+  getById: async (appointmentId) => {
+    console.log('📅 appointmentsAPI.getById called with:', { appointmentId });
+    const response = await api.get(`/api/appointments/${appointmentId}`);
+    return response.data;
+  },
+
+  /**
+   * Cancel appointment
+   * @param {string} appointmentId - Appointment ID
+   * @returns {Promise<Object>} Cancellation response
+   */
+  cancel: async (appointmentId) => {
+    console.log('📅 appointmentsAPI.cancel called with:', { appointmentId });
+    const response = await api.patch(`/api/appointments/${appointmentId}/cancel`);
     return response.data;
   },
 };

@@ -30,11 +30,15 @@ mongoose.connect(process.env.MONGODB_URI)
 const authRoutes = require('./routes/auth');
 const ticketRoutes = require('./routes/tickets');
 const userRoutes = require('./routes/users');
+const doctorRoutes = require('./routes/doctors');
+const appointmentRoutes = require('./routes/appointments');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/doctors', doctorRoutes);
+app.use('/api/appointments', appointmentRoutes);
 
 // Socket.io Connection
 io.on('connection', (socket) => {

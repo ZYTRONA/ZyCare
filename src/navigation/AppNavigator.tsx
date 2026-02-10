@@ -3,6 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RootStackParamList, MainTabParamList } from '../types';
 import { Colors } from '../constants/theme';
@@ -25,6 +26,15 @@ import SymptomCheckerScreen from '../screens/SymptomCheckerScreen';
 import ConsultationScreen from '../screens/ConsultationScreen';
 import ChatScreen from '../screens/ChatScreen';
 
+// Settings Screens
+import PersonalInformationScreen from '../screens/settings/PersonalInformationScreen';
+import MedicalRecordsScreen from '../screens/settings/MedicalRecordsScreen';
+import NotificationsScreen from '../screens/settings/NotificationsScreen';
+import PrivacySecurityScreen from '../screens/settings/PrivacySecurityScreen';
+import HelpSupportScreen from '../screens/settings/HelpSupportScreen';
+import AboutScreen from '../screens/settings/AboutScreen';
+import LanguageSelectionScreen from '../screens/LanguageSelectionScreen';
+
 // JS Screens for video call
 import VideoCall from '../screens/main/VideoCall';
 
@@ -32,6 +42,8 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -62,9 +74,9 @@ function MainTabs() {
         tabBarStyle: {
           backgroundColor: Colors.cardBackground,
           borderTopColor: Colors.border,
-          paddingBottom: 5,
+          paddingBottom: insets.bottom + 5,
           paddingTop: 5,
-          height: 60,
+          height: 60 + insets.bottom,
         },
         headerShown: false,
       })}
@@ -83,55 +95,98 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: Colors.background },
-        }}
-      >
-        {!isAuthenticated ? (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
-        ) : null}
-        <Stack.Screen name="MainTabs" component={MainTabs} />
-        <Stack.Screen
-          name="DoctorProfile"
-          component={DoctorProfileScreen}
-          options={{ headerShown: true, title: 'Doctor Profile' }}
-        />
-        <Stack.Screen
-          name="BookAppointment"
-          component={BookAppointmentScreen}
-          options={{ headerShown: true, title: 'Book Appointment' }}
-        />
-        <Stack.Screen
-          name="SymptomChecker"
-          component={SymptomCheckerScreen}
-          options={{ headerShown: true, title: 'AI Symptom Checker' }}
-        />
-        <Stack.Screen
-          name="Consultation"
-          component={ConsultationScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="ChatScreen"
-          component={ChatScreen}
-          options={{ headerShown: true, title: 'Chat' }}
-        />
-        <Stack.Screen
-          name="Chat"
-          component={ChatScreen}
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="VideoCall"
-          component={VideoCall}
-          options={{ headerShown: false }}
-        />
-      </Stack.Navigator>
+      {isAuthenticated && user ? (
+        // Authenticated User Stack
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: Colors.background },
+          }}
+        >
+          <Stack.Screen name="MainTabs" component={MainTabs} />
+          <Stack.Screen
+            name="DoctorProfile"
+            component={DoctorProfileScreen}
+            options={{ headerShown: true, title: 'Doctor Profile' }}
+          />
+          <Stack.Screen
+            name="BookAppointment"
+            component={BookAppointmentScreen}
+            options={{ headerShown: true, title: 'Book Appointment' }}
+          />
+          <Stack.Screen
+            name="SymptomChecker"
+            component={SymptomCheckerScreen}
+            options={{ headerShown: true, title: 'AI Symptom Checker' }}
+          />
+          <Stack.Screen
+            name="PersonalInformation"
+            component={PersonalInformationScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="MedicalRecords"
+            component={MedicalRecordsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="PrivacySecurity"
+            component={PrivacySecurityScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="HelpSupport"
+            component={HelpSupportScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="About"
+            component={AboutScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Consultation"
+            component={ConsultationScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ChatScreen"
+            component={ChatScreen}
+            options={{ headerShown: true, title: 'Chat' }}
+          />
+          <Stack.Screen
+            name="Chat"
+            component={ChatScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="VideoCall"
+            component={VideoCall}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="LanguageSelection"
+            component={LanguageSelectionScreen}
+            options={{ headerShown: false }}
+          />
+        </Stack.Navigator>
+      ) : (
+        // Unauthenticated User Stack
+        <Stack.Navigator
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: Colors.background },
+          }}
+        >
+          <Stack.Screen name="Login" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+        </Stack.Navigator>
+      )}
     </NavigationContainer>
   );
 }
